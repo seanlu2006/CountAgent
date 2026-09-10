@@ -1,12 +1,13 @@
-# ─── 私人財務資料，絕不進版控 ───
-data/secrets.json
-data/ledger.csv
-data/sean_profile.md
-data/budget.md
-data/food_notes.md
-data/inbox_archive.txt
+# ─── 私人財務資料,絕不進版控 ───
+# data/ 採「預設全擋、白名單放行」:
+# 這樣日後在 data/ 新增任何私人檔案,都不會因為忘了加規則而不小心被 commit。
+data/*
+!data/categories.md
+!data/*.example.md
+!data/*.example.csv
+!data/*.example.json
 
-# 產出的報表與收據（含實際金額）
+# 產出的報表與收據(含實際金額)
 reports/
 receipts/
 
