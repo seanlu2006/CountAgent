@@ -24,20 +24,46 @@ OUT = ROOT / "reports" / "dashboard.html"
 PALETTE = ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f",
            "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac"]
 
+def _demo_date(months_ago: int, day: int) -> str:
+    """示範資料的日期要跟著今天走。
+
+    寫死日期的話,--demo 產出的儀表板會隨著時間過去愈來愈空
+    (「本月」那幾張卡片會全部變成 0),看起來像壞掉。
+    """
+    today = date.today()
+    month = today.month - months_ago
+    year = today.year
+    while month <= 0:
+        month += 12
+        year -= 1
+    if months_ago == 0:
+        # 把原本散在整個月的日期等比壓縮進「本月已經過的天數」,
+        # 這樣既不會出現未來日期,也不會全部擠在同一天。
+        day = max(1, round(day * today.day / 28))
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+# 全部都是假資料,只為了展示儀表板長相。日期相對於今天,最近一個月最完整。
 DEMO_ROWS = [
-    {"date": "2026-04-05", "type": "收入", "amount": "52000", "category": "薪資", "item": "四月薪水"},
-    {"date": "2026-04-12", "type": "支出", "amount": "15000", "category": "居住", "item": "房租"},
-    {"date": "2026-04-20", "type": "支出", "amount": "3200", "category": "飲食", "item": "外食"},
-    {"date": "2026-05-05", "type": "收入", "amount": "52000", "category": "薪資", "item": "五月薪水"},
-    {"date": "2026-05-08", "type": "收入", "amount": "8000", "category": "副業", "item": "接案"},
-    {"date": "2026-05-12", "type": "支出", "amount": "15000", "category": "居住", "item": "房租"},
-    {"date": "2026-05-15", "type": "支出", "amount": "4800", "category": "飲食", "item": "餐飲合計"},
-    {"date": "2026-05-18", "type": "支出", "amount": "1250", "category": "交通", "item": "捷運+加油"},
-    {"date": "2026-05-22", "type": "支出", "amount": "3600", "category": "購物", "item": "衣服"},
-    {"date": "2026-05-25", "type": "支出", "amount": "990", "category": "娛樂", "item": "電影+串流"},
-    {"date": "2026-05-28", "type": "支出", "amount": "1500", "category": "醫療", "item": "看診拿藥"},
-    {"date": "2026-06-02", "type": "支出", "amount": "120", "category": "飲食", "item": "午餐 便當"},
-    {"date": "2026-06-03", "type": "支出", "amount": "680", "category": "日用", "item": "屈臣氏"},
+    {"date": _demo_date(2, 5), "type": "收入", "amount": "52000", "category": "薪資", "item": "月薪"},
+    {"date": _demo_date(2, 12), "type": "支出", "amount": "15000", "category": "居住", "item": "房租"},
+    {"date": _demo_date(2, 20), "type": "支出", "amount": "3200", "category": "飲食", "item": "外食合計"},
+
+    {"date": _demo_date(1, 5), "type": "收入", "amount": "52000", "category": "薪資", "item": "月薪"},
+    {"date": _demo_date(1, 8), "type": "收入", "amount": "8000", "category": "副業", "item": "接案"},
+    {"date": _demo_date(1, 12), "type": "支出", "amount": "15000", "category": "居住", "item": "房租"},
+    {"date": _demo_date(1, 15), "type": "支出", "amount": "4800", "category": "飲食", "item": "餐飲合計"},
+    {"date": _demo_date(1, 18), "type": "支出", "amount": "1250", "category": "交通", "item": "捷運+加油"},
+
+    {"date": _demo_date(0, 3), "type": "收入", "amount": "52000", "category": "薪資", "item": "月薪"},
+    {"date": _demo_date(0, 5), "type": "支出", "amount": "15000", "category": "居住", "item": "房租"},
+    {"date": _demo_date(0, 8), "type": "支出", "amount": "4800", "category": "飲食", "item": "餐飲合計"},
+    {"date": _demo_date(0, 11), "type": "支出", "amount": "3600", "category": "購物", "item": "衣服"},
+    {"date": _demo_date(0, 14), "type": "支出", "amount": "1500", "category": "醫療", "item": "看診拿藥"},
+    {"date": _demo_date(0, 17), "type": "支出", "amount": "1250", "category": "交通", "item": "捷運+加油"},
+    {"date": _demo_date(0, 20), "type": "支出", "amount": "990", "category": "娛樂", "item": "電影+串流"},
+    {"date": _demo_date(0, 22), "type": "支出", "amount": "680", "category": "日用", "item": "生活用品"},
+    {"date": _demo_date(0, 24), "type": "支出", "amount": "120", "category": "飲食", "item": "午餐 便當"},
 ]
 
 
