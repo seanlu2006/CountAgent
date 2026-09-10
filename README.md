@@ -5,6 +5,10 @@
 在外面對 Siri 說一句「午餐 120」，回到電腦說一聲「整理」，
 剩下的分類、補欄位、算預算、產報表，全部由 agent 完成。
 
+![CountAgant 儀表板](docs/dashboard.png)
+
+<sub>上圖由 `python3 scripts/dashboard.py --demo` 產生，資料全為示範假資料。</sub>
+
 ---
 
 ## 為什麼做這個
