@@ -1,0 +1,22 @@
+# ─── 私人財務資料，絕不進版控 ───
+data/secrets.json
+data/ledger.csv
+data/sean_profile.md
+data/budget.md
+data/food_notes.md
+data/inbox_archive.txt
+
+# 產出的報表與收據（含實際金額）
+reports/
+receipts/
+
+# 備份檔
+*.bak-*
+
+# 系統雜檔
+.DS_Store
+__pycache__/
+*.pyc
+
+# Claude Code 本機設定
+.claude/settings.local.json
