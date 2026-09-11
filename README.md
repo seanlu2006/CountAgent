@@ -1,194 +1,192 @@
 # CountAgent
 
-**一個跑在 Claude Code 上的個人記帳 agent —— 捕捉端笨到極點，判斷端全交給 AI。**
+[繁體中文](README.zh-TW.md)
 
-在外面對 Siri 說一句「午餐 120」，回到電腦說一聲「整理」，
-剩下的分類、補欄位、算預算、產報表，全部由 agent 完成。
+**A personal expense tracker that runs inside Claude Code. The capture side is deliberately stupid; every judgement call is handed to the agent.**
 
-![CountAgent 儀表板](docs/dashboard.png)
+Say "lunch 120" to Siri while you're still standing outside the shop. Say "sort it out" when you're back at your computer. Categorising, filling in the blanks, working out the budget and writing the reports all happen afterwards, without you.
 
-<sub>上圖由 `python3 scripts/dashboard.py --demo` 產生，資料全為示範假資料。</sub>
+![CountAgent dashboard](docs/dashboard.png)
 
----
+<sub>Produced by <code>python3 scripts/dashboard.py --demo</code>. Every number in the screenshot is demo data.</sub>
 
-## 為什麼做這個
+This runs on your own machine, so there is nothing hosted to click. The closest thing to a live demo is one command — no ledger, no account, no setup:
 
-記帳 App 滿街都是，但我每次都撐不過兩週。問題不在功能不夠，
-而在**當下那兩秒**：要開 App、等載入、選分類、選付款方式、填欄位——
-等於每記一筆，都要先幫 App 把資料整理好。人在店門口、雨中、跟朋友講話時，不會想做這件事。
+```bash
+git clone https://github.com/seanlu2006/CountAgent.git
+cd CountAgent
+python3 scripts/dashboard.py --demo
+```
 
-所以我不想再做一個「更好用的記帳 App」。我想試的是：
-**如果記錄這件事可以退化成「講一句話」，聰明的部分全部由 AI 事後補，會怎麼樣？**
+## Why I built it
 
-## 核心概念：把智慧從 App 移到 Agent
+Expense apps are everywhere, and I've quit every one of them inside two weeks. The problem was never the feature list. It was **the two seconds at the point of spending**: open the app, wait for it to load, pick a category, pick a payment method, fill in the fields. Every entry asks you to tidy up the data on the app's behalf first. Standing in a doorway, in the rain, halfway through a conversation, nobody wants to do that.
 
-一般記帳 App 把智慧放在**介面**：下拉選單、分類樹、標籤、規則引擎。
-智慧放在介面的代價，是使用者必須配合資料庫的 schema 思考——
-你不是在「記帳」，你是在「替資料表填欄位」。
+So I didn't try to build a better expense app. I asked a different question: **what if recording an expense collapsed into one spoken sentence, and everything clever happened afterwards?**
 
-CountAgent 反過來，把捕捉端和整理端徹底切開：
+## The idea: move the intelligence out of the interface and into the agent
 
-| | 捕捉 | 整理 |
+A normal expense app puts its intelligence in the **interface** — dropdowns, category trees, tags, rule engines. The price is that you have to think in the shape of the database schema. You aren't recording an expense; you're populating a table.
+
+CountAgent splits capture from interpretation completely:
+
+| | Capture | Interpretation |
 |---|---|---|
-| 在哪 | iPhone，任何地方 | 電腦，有空時 |
-| 誰做 | 你，兩秒一句話 | Agent，全自動 |
-| 要多聰明 | **笨到極點**（純文字附加到一個檔案） | **很聰明**（語意解析 + 常識判斷） |
-| 失敗率 | 幾乎為零，沒有網路也能用 | 出錯可事後修，不影響記錄 |
+| Where | iPhone, anywhere | Computer, whenever |
+| Who | You, one sentence, two seconds | The agent, unattended |
+| How smart | **As dumb as possible** — append plain text to a file | **Smart** — semantic parsing and common sense |
+| Failure rate | Near zero; works with no signal | Higher, but every mistake is fixable later and none of them block capture |
 
-**捕捉端笨，是刻意的設計，不是偷懶。**
-它只做一件事：把一行字附加到一個純文字檔。沒有欄位、沒有選單、沒有登入、沒有網路請求。
-笨到不可能故障，也就笨到讓人沒有藉口不用。
+**The dumb capture side is a design decision, not laziness.** It does exactly one thing: append a line of text to a plain text file. No fields, no menus, no login, no network request. Too dumb to break — and too dumb to give me an excuse not to use it.
 
-**判斷的苦工，全部推給 agent。**
-把「昨天宵夜 97」變成一列九欄的帳，需要推斷日期（昨天是幾號）、收支類型、
-分類（宵夜屬飲食）、付款方式（沒講就用預設）、品項描述。
-這正好是 LLM 擅長、而傳統規則引擎最脆弱的地方——關鍵字表永遠寫不完使用者的講法。
+**All the tedious judgement calls go to the agent.** Turning "late-night snack 97, yesterday" into a nine-column row means inferring the date (which day was "yesterday"), the type, the category (a snack counts as Food) and the payment method (unstated, so the default applies) — and then writing a short description. That is exactly where an LLM is strong and where a keyword-matching rule engine is most brittle — a keyword table never covers the way people actually talk.
 
-**而規則本身是自然語言，不是程式碼。**
-Agent 的完整行為定義寫在 [`CLAUDE.md`](CLAUDE.md)：怎麼推斷分類、什麼情況該反問、
-投資為什麼不算支出、發票匯入後要主動複查哪些可疑分類。
-要改規則（例如「沒講付款方式就預設信用卡」）就是改一句中文，不必重寫 parser。
-記帳規則因此能跟著生活習慣演化，而不是每次都要動到程式。
+**And the rules are prose, not code.** The agent's entire behaviour is defined in [`CLAUDE.md`](CLAUDE.md): 164 lines, about 8.5 KB of Traditional Chinese. It covers how to infer a category, when to stop and ask instead of guessing, why an investment is neither income nor expense, and which suspicious categories to re-check after an invoice import. Translated, the rules read like this:
 
-對使用者的實際差別：
-記一筆的成本從「開 App → 選分類 → 填金額 → 存檔」變成「對 Siri 講一句話」；
-整理的成本從「永遠不會做」變成「有空時說一聲『整理』」。
+> If he doesn't say how he paid, default to credit card — he rarely uses cash. "Paid cash" means cash; LINE Pay, JKOPay or EasyWallet means mobile payment; a transfer, a remittance or a repayment means bank or transfer.
 
-## 核心功能
+> Invoice categories are guessed from the shop name and may be wrong. After an import, go through the doubtful ones yourself — something bought at a convenience store isn't necessarily Food — and ask once whether to adjust them; when he confirms, drop the "category unconfirmed" marker from the note.
 
-- **零摩擦捕捉** — iOS 捷徑 + Siri 語音把一句話寫進 iCloud 的 `inbox.txt`，離線可用，自動帶時間戳
-- **語意解析建帳** — agent 逐行判讀，自動補齊日期、收支類型、分類、付款方式、品項九個欄位
-- **去重防呆** — iCloud 同步可能把已處理的舊行帶回來，以歸檔檔逐字比對後跳過
-- **電子發票匯入** — 支援載具匯出的 CSV（欄名不拘、Big5/UTF-8 自動判讀）與財政部載具 API，用發票號碼去重
-- **多維報表** — 月報、季度財報（儲蓄率、預算 vs 實際、固定 vs 變動支出）、HTML 儀表板
-- **自煮成本追蹤** — 記錄食材消耗速度，換算自煮與外食的真實單餐成本
+Changing a rule means editing a sentence, not rewriting a parser. The rules can drift with my habits instead of with my willingness to touch the code.
 
-## 快速開始
+The practical difference: recording an expense goes from "open app → pick category → type amount → save" to "say one sentence to Siri", and sorting it out goes from "never" to "say 'sort it out' when I have a minute".
 
-需要 [Claude Code](https://claude.com/claude-code) 與 Python 3（腳本只用標準函式庫，**不需 pip 安裝任何套件**）。
+## What it does
+
+- **One-sentence capture** — an iOS Shortcut plus Siri appends one line to `inbox.txt` in iCloud. It works offline, and if you set the Shortcut up to prepend a timestamp, the agent uses that as the date.
+- **Semantic entry** — the agent reads the backlog line by line, infers the date, the type, the category and the payment method, writes a short description, and appends a nine-column row to the ledger.
+- **Duplicate protection** — iCloud sync can hand back lines that were already processed, so every raw line is kept in an archive file and compared verbatim; anything already seen is skipped.
+- **E-invoice import** — in Taiwan, purchases can be attached to a phone-barcode carrier and retrieved later. Two routes, one ledger: a CSV export from the carrier app (column names matched by keyword, comma or tab, Big5 and UTF-8 both decoded automatically) or the Ministry of Finance carrier API. Both deduplicate on invoice number.
+- **Reports** — a monthly summary, a quarterly statement (savings rate, budget vs actual, fixed vs variable spending) and an HTML dashboard.
+- **Cooking cost tracking** — records how fast ingredients get used up, so I can compare what cooking actually costs per meal against what eating out costs.
+
+## Quick start
+
+You need [Claude Code](https://claude.com/claude-code) and Python 3. The scripts use the standard library only — **nothing to `pip install`**.
 
 ```bash
 git clone https://github.com/seanlu2006/CountAgent.git
 cd CountAgent
 ```
 
-**先看長相**（用內建假資料，不會碰到任何帳本）：
+**See what it looks like first.** This uses built-in fake data and never reads your ledger — it does overwrite `reports/dashboard.html`, so re-run it without `--demo` afterwards if you already have a real one:
 
 ```bash
 python3 scripts/dashboard.py --demo
 ```
 
-**開始自己用**——複製範本建立你的私人資料檔（這些檔案都已被 `.gitignore` 排除）：
+**Then set up your own files.** Copy the templates — all four are already excluded by `.gitignore`:
 
 ```bash
-cp data/ledger.example.csv   data/ledger.csv        # 主帳本
-cp data/budget.example.md    data/budget.md         # 預算（季報會讀）
-cp data/profile.example.md   data/sean_profile.md   # 個人設定（付款習慣、固定支出）
-cp data/food_notes.example.md data/food_notes.md    # 食材成本筆記（選用）
+cp data/ledger.example.csv    data/ledger.csv        # the ledger itself
+cp data/budget.example.md     data/budget.md         # budget, read by the quarterly report
+cp data/profile.example.md    data/sean_profile.md   # your defaults: payment habits, fixed costs
+cp data/food_notes.example.md data/food_notes.md     # ingredient costs (optional)
 ```
 
-範本裡的數字全是假的，記得換成自己的。接著在專案資料夾開 Claude Code：
+The numbers in the templates are invented, so replace them. Then open Claude Code in the project folder:
 
 ```bash
 claude
 ```
 
-然後直接講話就好，**記帳不需要任何指令**：
+and talk to it. **Recording an expense takes no command at all:**
 
-> 你：午餐 120
-> Agent：#42 2026-05-31 | 支出 120 | 飲食 · 午餐（信用卡）
+> **You:** lunch 120
+>
+> **Agent:** ✅ #42 2026-05-31 | expense 120 | Food · lunch (credit card)
 
-說「整理」，agent 會去讀 iCloud 收件匣，把累積的語音記錄一次消化進帳本。
+The agent works in Traditional Chinese; the reply above is translated. It checks the iCloud inbox at the start of every session; saying "sort it out" just tells it to digest the whole backlog now.
 
-**報表指令**：
-
-```bash
-python3 scripts/report.py                 # 本月月報
-python3 scripts/report.py 2026-08         # 指定月份
-python3 scripts/quarterly.py              # 本季財報
-python3 scripts/quarterly.py 2026Q3       # 指定季度
-python3 scripts/quarterly.py 2026Q3 --md  # 另存 reports/2026-Q3.md
-python3 scripts/dashboard.py              # 產生並開啟 HTML 儀表板
-python3 scripts/dashboard.py --no-open    # 只產生不開瀏覽器
-```
-
-**電子發票匯入**：
+**Reports:**
 
 ```bash
-python3 scripts/import_csv.py 匯出檔.csv --dry-run   # 先預覽不寫入
-python3 scripts/import_csv.py 匯出檔.csv
+python3 scripts/report.py                 # this month, printed to the terminal
+python3 scripts/report.py 2026-08         # a specific month
+python3 scripts/quarterly.py              # this quarter
+python3 scripts/quarterly.py 2026Q3       # a specific quarter
+python3 scripts/quarterly.py 2026Q3 --md  # also saved to reports/2026-Q3.md
+python3 scripts/dashboard.py              # reports/dashboard.html, opened on macOS
+python3 scripts/dashboard.py --no-open    # the same file, without opening a browser
 ```
 
-若要走財政部載具 API，複製 `data/secrets.example.json` 成 `data/secrets.json` 填入憑證後：
+**E-invoice import:**
+
+```bash
+python3 scripts/import_csv.py export.csv --dry-run   # preview, write nothing
+python3 scripts/import_csv.py export.csv
+```
+
+For the Ministry of Finance carrier API, copy `data/secrets.example.json` to `data/secrets.json`, fill in your credentials, then:
 
 ```bash
 python3 scripts/fetch_invoices.py --days 30 --dry-run
 ```
 
-**設定 Siri 捕捉端**（選用，但這是整套設計的重點）：
-用 iOS 捷徑 App 建一個捷徑，動作選「附加到文字檔案」，
-目標檔為 iCloud 捷徑資料夾中的 `inbox.txt`，內容設為聽寫文字加時間戳，
-命名為「記一筆」即可用 Siri 喚起。Mac 端會自動同步收到。
+**Setting up the Siri capture side** is optional, but it's the point of the whole design. In the iOS Shortcuts app, create a shortcut with a single action: "Append to Text File". Point it at `inbox.txt` in the Shortcuts iCloud folder, and set the content to a timestamp followed by the dictated text (the timestamp has to come first for the agent to read it as the date). Give it a name you can say out loud. iCloud syncs the file to the Mac on its own.
 
-## 技術架構
+## How it works
 
 ```
-[捕捉] iPhone / Siri 一句話
-   └─▶ 附加到 iCloud inbox.txt（純文字，一行一筆，帶時間戳）
-              │  iCloud 自動同步
-              ▼
-[解析] Claude Code agent 讀 inbox.txt
-   ├─▶ 比對 inbox_archive.txt 去重
-   └─▶ 依 CLAUDE.md 的規則逐行判讀語意
-              │
-[分類] 對照 categories.md 推斷分類，用 profile 補付款方式預設值
-              │
-[儲存] append 一列到 data/ledger.csv（九欄，永不重排歷史列）
-              │  清空 inbox、原始行存進 archive
-              ▼
-[報表] report.py（月）│ quarterly.py（季，讀 budget.md）│ dashboard.py（HTML）
-              └─▶ reports/
+[capture]  one sentence to Siri on the iPhone
+    └─▶ appended to inbox.txt in iCloud (plain text, one line per entry, timestamped)
+               │  iCloud syncs it across
+               ▼
+[parse]    the Claude Code agent reads inbox.txt
+    ├─▶ compares each raw line against inbox_archive.txt and skips duplicates
+    └─▶ interprets the rest line by line against the rules in CLAUDE.md
+               │
+[classify] category inferred from categories.md; payment method filled in from the profile defaults
+               │
+[store]    one row appended to data/ledger.csv (nine columns; history is never reordered)
+               │  inbox emptied, raw lines moved into the archive
+               ▼
+[report]   report.py     — month, prints to the terminal
+           quarterly.py  — quarter, reads budget.md; --md also writes reports/<YYYY>-Q<N>.md
+           dashboard.py  — writes reports/dashboard.html
 
-另一條進帳路徑：
-電子發票 CSV / 財政部 API ─▶ categorize.py 依店名猜分類 ─▶ 同一份 ledger.csv
-                              （標記「分類待確認」，由 agent 事後複查）
+The other way in:
+carrier CSV / Ministry of Finance API ─▶ categorize.py guesses a category from the shop name ─▶ the same ledger.csv
+                                         (flagged "category unconfirmed" for the agent to review later)
 ```
 
-`ledger.csv` 是唯一的事實來源：純 CSV、可用 Excel 直接開、易備份與遷移，
-不綁任何 App 或資料庫。
+`ledger.csv` is the single source of truth: plain CSV. It opens in Excel, it's trivial to back up or migrate, and it's tied to no app and no database.
 
-## 專案結構
+## Project layout
 
 ```
 CountAgent/
-├── CLAUDE.md                    # Agent 行為定義（本專案的核心，用自然語言寫的規則）
+├── CLAUDE.md                    # agent behaviour definition — the core of this project, written as prose
 ├── data/
-│   ├── categories.md            # 分類定義（公開）
-│   ├── ledger.example.csv       # 帳本範本（假資料）
-│   ├── budget.example.md        # 預算範本（假資料）
-│   ├── profile.example.md       # 個人設定範本（假資料）
-│   ├── food_notes.example.md    # 食材成本範本（假資料）
-│   └── secrets.example.json     # 發票 API 憑證範本
+│   ├── categories.md            # category definitions (public)
+│   ├── ledger.example.csv       # ledger template (fake data)
+│   ├── budget.example.md        # budget template (fake data)
+│   ├── profile.example.md       # personal defaults template (fake data)
+│   ├── food_notes.example.md    # ingredient cost template (fake data)
+│   └── secrets.example.json     # invoice API credentials template
 ├── scripts/
-│   ├── report.py                # 月報
-│   ├── quarterly.py             # 季度財報（讀 budget.md）
-│   ├── dashboard.py             # HTML 儀表板（Chart.js CDN）
-│   ├── import_csv.py            # 電子發票 CSV 匯入
-│   ├── fetch_invoices.py        # 財政部載具 API 抓取
-│   └── categorize.py            # 店名 → 分類的共用規則
-└── reports/                     # 產出的報表（不進版控）
+│   ├── report.py                # monthly summary
+│   ├── quarterly.py             # quarterly statement (reads budget.md)
+│   ├── dashboard.py             # HTML dashboard (Chart.js from a CDN)
+│   ├── import_csv.py            # e-invoice CSV import
+│   ├── fetch_invoices.py        # Ministry of Finance carrier API
+│   └── categorize.py            # shop name → category, shared by both import paths
+├── docs/dashboard.png           # the screenshot above
+└── reports/                     # generated reports (not in version control)
 ```
 
-實際的帳本、預算、個人設定與報表都不在版控內，clone 下來只有程式碼、行為定義與假資料範本。
+The real ledger, budget, profile and reports are all outside version control. A clone gives you the code, the behaviour definition and fake sample data — nothing else. `data/` is deny-by-default in `.gitignore`, with an allowlist for the templates, so a private file added there later can't leak into a commit just because I forgot to add a rule for it.
 
-## 已知限制
+## Known limitations
 
-- **依賴 Claude Code**：這不是獨立 App。沒有 Claude Code 的話，剩下的只是幾支能讀 CSV 的 Python 腳本，記帳那一半不會動。
-- **LLM 判讀不保證全對**：語意模糊的句子（「那個 300」）會被留在收件匣等人確認；電子發票是**用店名猜分類**，超商買日用品就會歸錯，需要事後複查。
-- **單人單機**：靠 iCloud 檔案同步，沒有多人共帳、沒有多裝置即時同步。同步有延遲，也可能把舊行帶回來（靠歸檔比對去重處理）。
-- **捕捉端綁 Apple 生態**：Siri + iOS 捷徑寫 iCloud 檔案。換平台就得自己做一個「能附加一行字到某個檔案」的捕捉端——不過也就這樣而已，這層本來就設計得很薄。
-- **財政部 API 需要 AppID**，申請頁常在維護，所以目前主用 CSV 匯入那條路。
+- **It depends on Claude Code.** This is not a standalone app. Without Claude Code you're left with a few Python scripts that read a CSV, and the bookkeeping half doesn't run at all.
+- **The LLM doesn't get everything right.** Genuinely ambiguous lines ("that 300") are left in the inbox for me to confirm rather than guessed at. E-invoice categories are **guessed from the shop name**, so household goods bought at a convenience store land under Food and need a review pass.
+- **One person, one machine.** It leans on iCloud file sync: no shared ledgers, no real-time multi-device sync. Sync lags, and it can hand back old lines — which is what the archive comparison is there for.
+- **Capture is tied to Apple.** Siri plus an iOS Shortcut writing to an iCloud file. On another platform you'd have to build your own "append one line to a file" capture, but that is genuinely all it is; the layer was designed to be that thin.
+- **The Ministry of Finance API needs an AppID**, and the application page is often down for maintenance, so CSV import is the route I actually use.
+- **The dashboard needs a network connection for its charts.** It pulls Chart.js from a CDN; offline you still get the KPI cards and the transactions table, just not the two charts.
+- **Fixed vs variable spending is manual.** The quarterly report counts a row as fixed only if its note contains the Chinese word 固定 ("fixed") — a literal keyword match in `quarterly.py` — so an unlabelled recurring bill shows up as variable.
 
-## 授權
+## License
 
-[MIT](LICENSE)。拿去改、拿去用都可以。
+[MIT](LICENSE). Take it, change it, use it.
