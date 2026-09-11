@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CountAgant 月報:彙總某月份的收支。
+"""CountAgent 月報:彙總某月份的收支。
 
 用法:
     python3 scripts/report.py            # 當月

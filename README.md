@@ -1,11 +1,11 @@
-# CountAgant
+# CountAgent
 
 **一個跑在 Claude Code 上的個人記帳 agent —— 捕捉端笨到極點，判斷端全交給 AI。**
 
 在外面對 Siri 說一句「午餐 120」，回到電腦說一聲「整理」，
 剩下的分類、補欄位、算預算、產報表，全部由 agent 完成。
 
-![CountAgant 儀表板](docs/dashboard.png)
+![CountAgent 儀表板](docs/dashboard.png)
 
 <sub>上圖由 `python3 scripts/dashboard.py --demo` 產生，資料全為示範假資料。</sub>
 
@@ -26,7 +26,7 @@
 智慧放在介面的代價，是使用者必須配合資料庫的 schema 思考——
 你不是在「記帳」，你是在「替資料表填欄位」。
 
-CountAgant 反過來，把捕捉端和整理端徹底切開：
+CountAgent 反過來，把捕捉端和整理端徹底切開：
 
 | | 捕捉 | 整理 |
 |---|---|---|
@@ -160,7 +160,7 @@ python3 scripts/fetch_invoices.py --days 30 --dry-run
 ## 專案結構
 
 ```
-CountAgant/
+CountAgent/
 ├── CLAUDE.md                    # Agent 行為定義（本專案的核心，用自然語言寫的規則）
 ├── data/
 │   ├── categories.md            # 分類定義（公開）

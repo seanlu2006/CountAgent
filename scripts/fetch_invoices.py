@@ -67,7 +67,7 @@ def api_post(action: str, cfg: dict, extra: dict) -> dict:
         data=data,
         headers={
             "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "CountAgant/1.0",
+            "User-Agent": "CountAgent/1.0",
         },
     )
     with urllib.request.urlopen(req, timeout=30) as resp:

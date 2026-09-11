@@ -141,7 +141,7 @@ HTML = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CountAgant 帳本儀表板</title>
+<title>CountAgent 帳本儀表板</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   :root{--bg:#0f1115;--card:#1a1d24;--ink:#e8eaed;--mut:#9aa0a6;--line:#2a2e37;
@@ -169,7 +169,7 @@ HTML = """<!DOCTYPE html>
 </head>
 <body>
 <div class="wrap">
-  <h1>📊 CountAgant 帳本</h1>
+  <h1>📊 CountAgent 帳本</h1>
   <div class="sub">本月 <span id="ym"></span>　·　產生時間會隨重跑更新</div>
 
   <div class="cards">
