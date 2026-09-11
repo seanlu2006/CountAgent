@@ -191,4 +191,4 @@ CountAgant/
 
 ## 授權
 
-尚未指定（規劃採用 MIT，待補上 `LICENSE` 檔）。
+[MIT](LICENSE)。拿去改、拿去用都可以。
