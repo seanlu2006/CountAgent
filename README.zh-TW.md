@@ -55,7 +55,7 @@ CountAgent 反過來，把捕捉端和整理端徹底切開：
 這正好是 LLM 擅長、而傳統規則引擎最脆弱的地方——關鍵字表永遠寫不完使用者的講法。
 
 **而規則本身是自然語言，不是程式碼。**
-Agent 的完整行為定義寫在 [`CLAUDE.md`](CLAUDE.md)（164 行、約 8.5 KB 的中文散文）：
+Agent 的完整行為定義寫在 [`CLAUDE.md`](CLAUDE.md)（172 行、約 9.4 KB 的中文散文）：
 怎麼推斷分類、什麼情況該反問、投資為什麼不算支出、發票匯入後要主動複查哪些可疑分類。
 規則原文長這樣：
 
@@ -76,9 +76,10 @@ Agent 的完整行為定義寫在 [`CLAUDE.md`](CLAUDE.md)（164 行、約 8.5 K
 
 - **一句話捕捉** — iOS 捷徑 + Siri 語音把一句話寫進 iCloud 的 `inbox.txt`，離線可用；捷徑有加時間戳的話，agent 就拿它當日期
 - **語意解析建帳** — agent 逐行判讀，推斷日期、收支類型、分類、付款方式與品項，append 一列九欄的帳
-- **去重防呆** — iCloud 同步可能把已處理的舊行帶回來，以歸檔檔逐字比對後跳過
+- **去重防呆** — iCloud 同步可能把已處理的舊行帶回來，以歸檔檔逐字比對後跳過；同一天同金額、同品項（兩筆「午餐 90」）先只記一筆，再問是不是真的兩餐
 - **電子發票匯入** — 支援載具匯出的 CSV（欄名不拘、Big5/UTF-8 自動判讀、逗號或 tab 皆可）與財政部載具 API，用發票號碼去重
-- **多維報表** — 月報、季度財報（儲蓄率、預算 vs 實際、固定 vs 變動支出）、HTML 儀表板
+- **帳期月** — 「一個月」照信用卡結帳日切（預設上月 24 ~ 本月 23，在 `scripts/period.py` 改），預算月就對得上實際要繳的那期帳單；季＝三個帳期
+- **多維報表** — 月報、季度財報（儲蓄率、預算 vs 實際、固定 vs 變動支出）、互動 HTML 儀表板：每日支出對照每日預算、分類 vs 預算、只看外食、交易表、⌘K 指令面板。單一檔案、不載任何函式庫、離線可用
 - **自煮成本追蹤** — 記錄食材消耗速度，換算自煮與外食的真實單餐成本
 
 ## 快速開始
@@ -122,8 +123,8 @@ Agent 每次跟你開始對話，都會先看一眼 iCloud 收件匣；說一聲
 **報表指令**：
 
 ```bash
-python3 scripts/report.py                 # 本月月報（印在終端機）
-python3 scripts/report.py 2026-08         # 指定月份
+python3 scripts/report.py                 # 本期月報（印在終端機）
+python3 scripts/report.py 2026-08         # 指定帳期（7/24 ~ 8/23）
 python3 scripts/quarterly.py              # 本季財報
 python3 scripts/quarterly.py 2026Q3       # 指定季度
 python3 scripts/quarterly.py 2026Q3 --md  # 另存 reports/2026-Q3.md
@@ -165,7 +166,7 @@ python3 scripts/fetch_invoices.py --days 30 --dry-run
 [儲存] append 一列到 data/ledger.csv（九欄，永不重排歷史列）
               │  清空 inbox、原始行存進 archive
               ▼
-[報表] report.py      — 月報，印在終端機
+[報表] report.py      — 月報（帳期 24 ~ 23，見 period.py），印在終端機
        quarterly.py   — 季報，讀 budget.md；加 --md 才另存 reports/<YYYY>-Q<N>.md
        dashboard.py   — 產生 reports/dashboard.html
 
@@ -192,7 +193,8 @@ CountAgent/
 ├── scripts/
 │   ├── report.py                # 月報
 │   ├── quarterly.py             # 季度財報（讀 budget.md）
-│   ├── dashboard.py             # HTML 儀表板（Chart.js CDN）
+│   ├── dashboard.py             # HTML 儀表板（單一檔、不載函式庫）
+│   ├── period.py                # 帳期：過了結帳日就算下個月
 │   ├── import_csv.py            # 電子發票 CSV 匯入
 │   ├── fetch_invoices.py        # 財政部載具 API 抓取
 │   └── categorize.py            # 店名 → 分類的共用規則
@@ -211,7 +213,6 @@ CountAgent/
 - **單人單機**：靠 iCloud 檔案同步，沒有多人共帳、沒有多裝置即時同步。同步有延遲，也可能把舊行帶回來（靠歸檔比對去重處理）。
 - **捕捉端綁 Apple 生態**：Siri + iOS 捷徑寫 iCloud 檔案。換平台就得自己做一個「能附加一行字到某個檔案」的捕捉端——不過也就這樣而已，這層本來就設計得很薄。
 - **財政部 API 需要 AppID**，申請頁常在維護，所以目前主用 CSV 匯入那條路。
-- **儀表板的圖要連網才出得來**：Chart.js 是從 CDN 載的；離線時 KPI 卡與最近交易表照常顯示，只有那兩張圖是空的。
 - **固定 vs 變動要自己標**：季報是看 `note` 有沒有「固定」兩字，沒標到的固定支出會被算成變動。
 
 ## 授權

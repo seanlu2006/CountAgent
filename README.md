@@ -41,7 +41,7 @@ CountAgent splits capture from interpretation completely:
 
 **All the tedious judgement calls go to the agent.** Turning "late-night snack 97, yesterday" into a nine-column row means inferring the date (which day was "yesterday"), the type, the category (a snack counts as Food) and the payment method (unstated, so the default applies) — and then writing a short description. That is exactly where an LLM is strong and where a keyword-matching rule engine is most brittle — a keyword table never covers the way people actually talk.
 
-**And the rules are prose, not code.** The agent's entire behaviour is defined in [`CLAUDE.md`](CLAUDE.md): 164 lines, about 8.5 KB of Traditional Chinese. It covers how to infer a category, when to stop and ask instead of guessing, why an investment is neither income nor expense, and which suspicious categories to re-check after an invoice import. Translated, the rules read like this:
+**And the rules are prose, not code.** The agent's entire behaviour is defined in [`CLAUDE.md`](CLAUDE.md): 172 lines, about 9.4 KB of Traditional Chinese. It covers how to infer a category, when to stop and ask instead of guessing, why an investment is neither income nor expense, and which suspicious categories to re-check after an invoice import. Translated, the rules read like this:
 
 > If he doesn't say how he paid, default to credit card — he rarely uses cash. "Paid cash" means cash; LINE Pay, JKOPay or EasyWallet means mobile payment; a transfer, a remittance or a repayment means bank or transfer.
 
@@ -55,9 +55,10 @@ The practical difference: recording an expense goes from "open app → pick cate
 
 - **One-sentence capture** — an iOS Shortcut plus Siri appends one line to `inbox.txt` in iCloud. It works offline, and if you set the Shortcut up to prepend a timestamp, the agent uses that as the date.
 - **Semantic entry** — the agent reads the backlog line by line, infers the date, the type, the category and the payment method, writes a short description, and appends a nine-column row to the ledger.
-- **Duplicate protection** — iCloud sync can hand back lines that were already processed, so every raw line is kept in an archive file and compared verbatim; anything already seen is skipped.
+- **Duplicate protection** — iCloud sync can hand back lines that were already processed, so every raw line is kept in an archive file and compared verbatim; anything already seen is skipped. A second check catches the human version: the same amount for the same thing on the same day (two "lunch 90"s) is recorded once, and the agent asks whether it really was two meals.
 - **E-invoice import** — in Taiwan, purchases can be attached to a phone-barcode carrier and retrieved later. Two routes, one ledger: a CSV export from the carrier app (column names matched by keyword, comma or tab, Big5 and UTF-8 both decoded automatically) or the Ministry of Finance carrier API. Both deduplicate on invoice number.
-- **Reports** — a monthly summary, a quarterly statement (savings rate, budget vs actual, fixed vs variable spending) and an HTML dashboard.
+- **Billing-cycle months** — a "month" runs from the day after the credit card statement closes to the next closing day (24th to 23rd by default, set in `scripts/period.py`), so a budget month matches the bill you actually pay. Quarters are three billing cycles.
+- **Reports** — a monthly summary, a quarterly statement (savings rate, budget vs actual, fixed vs variable spending) and an interactive HTML dashboard: daily spending against the daily budget, category bars against their budgets, an eating-out-only toggle, a transactions table and a ⌘K command palette. One self-contained file, no libraries, works offline.
 - **Cooking cost tracking** — records how fast ingredients get used up, so I can compare what cooking actually costs per meal against what eating out costs.
 
 ## Quick start
@@ -101,8 +102,8 @@ The agent works in Traditional Chinese; the reply above is translated. It checks
 **Reports:**
 
 ```bash
-python3 scripts/report.py                 # this month, printed to the terminal
-python3 scripts/report.py 2026-08         # a specific month
+python3 scripts/report.py                 # current billing month, printed to the terminal
+python3 scripts/report.py 2026-08         # a specific billing month (Jul 24 – Aug 23)
 python3 scripts/quarterly.py              # this quarter
 python3 scripts/quarterly.py 2026Q3       # a specific quarter
 python3 scripts/quarterly.py 2026Q3 --md  # also saved to reports/2026-Q3.md
@@ -141,7 +142,7 @@ python3 scripts/fetch_invoices.py --days 30 --dry-run
 [store]    one row appended to data/ledger.csv (nine columns; history is never reordered)
                │  inbox emptied, raw lines moved into the archive
                ▼
-[report]   report.py     — month, prints to the terminal
+[report]   report.py     — billing month (24th–23rd, see period.py), prints to the terminal
            quarterly.py  — quarter, reads budget.md; --md also writes reports/<YYYY>-Q<N>.md
            dashboard.py  — writes reports/dashboard.html
 
@@ -167,7 +168,8 @@ CountAgent/
 ├── scripts/
 │   ├── report.py                # monthly summary
 │   ├── quarterly.py             # quarterly statement (reads budget.md)
-│   ├── dashboard.py             # HTML dashboard (Chart.js from a CDN)
+│   ├── dashboard.py             # HTML dashboard (single file, no libraries)
+│   ├── period.py                # billing-cycle months: past the closing day = next month
 │   ├── import_csv.py            # e-invoice CSV import
 │   ├── fetch_invoices.py        # Ministry of Finance carrier API
 │   └── categorize.py            # shop name → category, shared by both import paths
@@ -184,7 +186,6 @@ The real ledger, budget, profile and reports are all outside version control. A 
 - **One person, one machine.** It leans on iCloud file sync: no shared ledgers, no real-time multi-device sync. Sync lags, and it can hand back old lines — which is what the archive comparison is there for.
 - **Capture is tied to Apple.** Siri plus an iOS Shortcut writing to an iCloud file. On another platform you'd have to build your own "append one line to a file" capture, but that is genuinely all it is; the layer was designed to be that thin.
 - **The Ministry of Finance API needs an AppID**, and the application page is often down for maintenance, so CSV import is the route I actually use.
-- **The dashboard needs a network connection for its charts.** It pulls Chart.js from a CDN; offline you still get the KPI cards and the transactions table, just not the two charts.
 - **Fixed vs variable spending is manual.** The quarterly report counts a row as fixed only if its note contains the Chinese word 固定 ("fixed") — a literal keyword match in `quarterly.py` — so an unlabelled recurring bill shows up as variable.
 
 ## License

@@ -20,7 +20,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from period import period_days, period_of, quarter_of  # noqa: E402
+from period import period_days, period_of, period_range, quarter_of  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 LEDGER = ROOT / "data" / "ledger.csv"
@@ -29,31 +29,34 @@ OUT = ROOT / "reports" / "dashboard.html"
 
 
 def _demo_date(months_ago: int, day: int) -> str:
-    """示範資料的日期要跟著今天走,不然 --demo 會隨時間愈來愈空。"""
+    """示範資料的日期要跟著今天走,不然 --demo 會隨時間愈來愈空。
+    day 是帳期內第幾天(1~28);當期只排到今天為止。"""
     today = date.today()
-    month = today.month - months_ago
-    year = today.year
-    while month <= 0:
-        month += 12
-        year -= 1
+    y, m = map(int, period_of(today).split("-"))
+    m -= months_ago
+    while m <= 0:
+        m += 12
+        y -= 1
+    start = period_range(f"{y:04d}-{m:02d}")[0]
+    offset = day - 1
     if months_ago == 0:
-        day = max(1, round(day * today.day / 28))
-    return f"{year:04d}-{month:02d}-{day:02d}"
+        offset = round(offset * (today - start).days / 27)
+    return (start + timedelta(days=offset)).isoformat()
 
 
 # 全部都是假資料,只為了展示儀表板長相。
 DEMO_ROWS = [
     {"date": _demo_date(2, 5), "type": "收入", "amount": "52000", "category": "薪資", "item": "月薪"},
-    {"date": _demo_date(2, 12), "type": "支出", "amount": "15000", "category": "居住", "item": "房租", "note": "固定"},
+    {"date": _demo_date(2, 12), "type": "支出", "amount": "6500", "category": "居住", "item": "房租", "note": "固定"},
     {"date": _demo_date(2, 20), "type": "支出", "amount": "3200", "category": "飲食", "item": "外食合計"},
     {"date": _demo_date(1, 5), "type": "收入", "amount": "52000", "category": "薪資", "item": "月薪"},
     {"date": _demo_date(1, 8), "type": "收入", "amount": "8000", "category": "副業", "item": "接案"},
-    {"date": _demo_date(1, 12), "type": "支出", "amount": "15000", "category": "居住", "item": "房租", "note": "固定"},
+    {"date": _demo_date(1, 12), "type": "支出", "amount": "6500", "category": "居住", "item": "房租", "note": "固定"},
     {"date": _demo_date(1, 15), "type": "支出", "amount": "4800", "category": "飲食", "item": "餐飲合計"},
     {"date": _demo_date(1, 18), "type": "支出", "amount": "1250", "category": "交通", "item": "捷運+加油"},
     {"date": _demo_date(1, 20), "type": "投資", "amount": "5000", "category": "投資", "item": "ETF 定期定額"},
     {"date": _demo_date(0, 3), "type": "收入", "amount": "52000", "category": "薪資", "item": "月薪"},
-    {"date": _demo_date(0, 5), "type": "支出", "amount": "15000", "category": "居住", "item": "房租", "note": "固定"},
+    {"date": _demo_date(0, 5), "type": "支出", "amount": "6500", "category": "居住", "item": "房租", "note": "固定"},
     {"date": _demo_date(0, 6), "type": "支出", "amount": "185", "category": "飲食", "item": "午餐"},
     {"date": _demo_date(0, 8), "type": "支出", "amount": "320", "category": "飲食", "item": "晚餐"},
     {"date": _demo_date(0, 9), "type": "支出", "amount": "860", "category": "食材", "item": "超市採買"},
@@ -80,9 +83,9 @@ def load_rows(demo: bool):
         return list(csv.DictReader(f))
 
 
-def load_budget():
-    """讀 data/budget.md(沒有就讀範本)的「每月分類預算」表格。"""
-    for p in BUDGET_FILES:
+def load_budget(demo: bool = False):
+    """讀 data/budget.md(沒有就讀範本)的「每月分類預算」表格。--demo 只讀範本,不碰私人預算。"""
+    for p in (BUDGET_FILES[1:] if demo else BUDGET_FILES):
         if not p.exists():
             continue
         cats, save, in_tbl = {}, 0.0, False
@@ -695,7 +698,7 @@ def main():
     ap.add_argument("--no-open", action="store_true", help="不自動開啟瀏覽器")
     args = ap.parse_args()
 
-    budget, save = load_budget()
+    budget, save = load_budget(args.demo)
     data = build(load_rows(args.demo), budget, save)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
