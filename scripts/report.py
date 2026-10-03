@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CountAgent 月報:彙總某月份的收支。
+"""CountAgent 月報:彙總某月份的收支。月 = 信用卡帳期(上月 24 ~ 本月 23)。
 
 用法:
     python3 scripts/report.py            # 當月
@@ -11,6 +11,9 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from period import period_of, period_range  # noqa: E402
+
 LEDGER = Path(__file__).resolve().parent.parent / "data" / "ledger.csv"
 
 
@@ -19,7 +22,7 @@ def fmt(n):
 
 
 def main():
-    month = sys.argv[1] if len(sys.argv) > 1 else date.today().strftime("%Y-%m")
+    month = sys.argv[1] if len(sys.argv) > 1 else period_of(date.today())
 
     if not LEDGER.exists():
         print(f"找不到帳本:{LEDGER}")
@@ -33,7 +36,7 @@ def main():
 
     with LEDGER.open(encoding="utf-8") as f:
         for r in csv.DictReader(f):
-            if not r.get("date", "").startswith(month):
+            if not r.get("date") or period_of(r["date"]) != month:
                 continue
             try:
                 amt = float(r["amount"])
@@ -49,7 +52,8 @@ def main():
                 invest += amt
             rows += 1
 
-    print(f"📊 {month} 月報")
+    a, b = period_range(month)
+    print(f"📊 {month} 月報  ({a:%m/%d} ~ {b:%m/%d},依信用卡帳期)")
     print("=" * 32)
     print(f"筆數    : {rows}")
     print(f"總收入  : {fmt(income)}")

@@ -13,6 +13,9 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from period import period_of, period_range  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 LEDGER = ROOT / "data" / "ledger.csv"
 BUDGET = ROOT / "data" / "budget.md"
@@ -27,8 +30,8 @@ def parse_quarter(arg):
     if arg and re.match(r"\d{4}Q[1-4]", arg.upper()):
         y, q = arg.upper().split("Q")
         return int(y), int(q)
-    today = date.today()
-    return today.year, (today.month - 1) // 3 + 1
+    y, m = map(int, period_of(date.today()).split("-"))
+    return y, (m - 1) // 3 + 1
 
 
 def num(r):
@@ -72,7 +75,9 @@ def collect(year, q):
     }
     with LEDGER.open(encoding="utf-8") as f:
         for r in csv.DictReader(f):
-            ym = (r.get("date") or "")[:7]
+            if not r.get("date"):
+                continue
+            ym = period_of(r["date"])  # 月 = 信用卡帳期
             if ym not in months:
                 continue
             amt = num(r)
@@ -100,32 +105,35 @@ def build_lines(year, q, d, bud):
     rate = (net / income * 100) if income else 0
 
     today = date.today()
-    elapsed = sum(1 for m in months if m <= today.strftime("%Y-%m")) or 3
+    elapsed = sum(1 for m in months if m <= period_of(today)) or 3
+    q_start, q_end = period_range(months[0])[0], period_range(months[-1])[1]
 
     L = []
-    L.append(f"📈 {year} 第 {q} 季財報  ({months[0]} ~ {months[-1]})   已過 {elapsed}/3 月")
+    L.append(f"📈 {year} 第 {q} 季財報  ({q_start:%m/%d} ~ {q_end:%m/%d},依信用卡帳期)   已過 {elapsed}/3 月")
     L.append("=" * 50)
     L.append(f"  總收入    {fmt(income):>12}")
     L.append(f"  總支出    {fmt(expense):>12}")
     L.append(f"  淨結餘    {fmt(net):>12}   (儲蓄率 {rate:.0f}%)")
-    L.append(f"  定期投資  {fmt(invest):>12}   (不計入支出)")
-    L.append(f"  真實留存  {fmt(net + invest):>12}   (結餘＋投資,你實際沒花掉的錢)")
+    # 收入已包含要拿去投資的錢,所以投資扣款已經在淨結餘裡,不能再加一次
+    L.append(f"  其中投資  {fmt(invest):>12}   (定期定額實際扣款,已含在淨結餘)")
+    L.append(f"  留在帳上  {fmt(net - invest):>12}   (淨結餘扣掉投資)")
 
     # 儲蓄目標
     tgt_q = bud["save_quarter"] or bud["save_month"] * 3
     tgt_prorated = bud["save_month"] * elapsed if bud["save_month"] else tgt_q * elapsed / 3
     if tgt_q:
-        real = net + invest
+        real = net
         status = "✅ 達標" if real >= tgt_prorated else "⚠️ 落後"
         L.append("")
-        L.append(f"── 儲蓄目標 ──  (真實留存計)")
+        L.append(f"── 儲蓄目標 ──  (淨結餘計,含投資)")
         L.append(f"  季目標 {fmt(tgt_q)} · 到目前應達 {fmt(tgt_prorated)} · 實際 {fmt(real)}  {status}")
 
     L.append("")
     L.append("── 每月收支 ──")
     for m in months:
         inc, exp, iv = d["m_income"].get(m, 0), d["m_expense"].get(m, 0), d["m_invest"].get(m, 0)
-        L.append(f"  {m}   收 {fmt(inc):>8}   支 {fmt(exp):>8}   投 {fmt(iv):>8}   餘 {fmt(inc-exp):>8}")
+        a, b = period_range(m)
+        L.append(f"  {m} ({a.month}/{a.day}–{b.month}/{b.day})   收 {fmt(inc):>8}   支 {fmt(exp):>8}   投 {fmt(iv):>8}   餘 {fmt(inc-exp):>8}")
 
     if expense:
         L.append("")
@@ -156,13 +164,13 @@ def build_lines(year, q, d, bud):
 
 def observations(d, bud, s):
     obs = []
-    real = s["net"] + s["invest"]
+    real = s["net"]
     tgt = (bud["save_month"] * s["elapsed"]) if bud["save_month"] else 0
     if tgt:
         if real >= tgt:
-            obs.append(f"儲蓄進度達標:真實留存 {fmt(real)},超出階段目標 {fmt(real-tgt)}。")
+            obs.append(f"儲蓄進度達標:淨結餘 {fmt(real)},超出階段目標 {fmt(real-tgt)}。")
         else:
-            obs.append(f"儲蓄落後:真實留存 {fmt(real)},比階段目標少 {fmt(tgt-real)}——本季後段留意變動支出。")
+            obs.append(f"儲蓄落後:淨結餘 {fmt(real)},比階段目標少 {fmt(tgt-real)}——本季後段留意變動支出。")
     over = [c for c in bud["cats"] if d["cats"].get(c, 0) > bud["cats"][c] * s["elapsed"]]
     if over:
         obs.append("超出預算節奏的分類:" + "、".join(over) + "。")
