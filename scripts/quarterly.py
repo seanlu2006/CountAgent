@@ -14,7 +14,7 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from period import period_of, period_range  # noqa: E402
+from period import baseline_income, period_of, period_range  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 LEDGER = ROOT / "data" / "ledger.csv"
@@ -98,6 +98,13 @@ def collect(year, q):
 
 def build_lines(year, q, d, bud):
     months = d["months"]
+    # 收入季末才補:每期至少以保底計(還沒到的期不算)
+    floor = baseline_income(BUDGET)
+    today_p = period_of(date.today())
+    for m in months:
+        if m <= today_p and d["m_income"].get(m, 0) < floor:
+            d["m_income"][m] = floor
+            d.setdefault("floored", []).append(m)
     income = sum(d["m_income"].values())
     expense = sum(d["m_expense"].values())
     invest = sum(d["m_invest"].values())
@@ -111,7 +118,7 @@ def build_lines(year, q, d, bud):
     L = []
     L.append(f"📈 {year} 第 {q} 季財報  ({q_start:%m/%d} ~ {q_end:%m/%d},依信用卡帳期)   已過 {elapsed}/3 月")
     L.append("=" * 50)
-    L.append(f"  總收入    {fmt(income):>12}")
+    L.append(f"  總收入    {fmt(income):>12}" + (f"   (含保底估計:{'、'.join(d['floored'])})" if d.get("floored") else ""))
     L.append(f"  總支出    {fmt(expense):>12}")
     L.append(f"  淨結餘    {fmt(net):>12}   (儲蓄率 {rate:.0f}%)")
     # 收入已包含要拿去投資的錢,所以投資扣款已經在淨結餘裡,不能再加一次

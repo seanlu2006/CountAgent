@@ -36,3 +36,19 @@ def period_days(ym: str, until: date | None = None):
 def quarter_of(ym: str):
     y, m = map(int, ym.split("-"))
     return y, (m - 1) // 3 + 1
+
+
+def baseline_income(budget_file) -> float:
+    """budget.md 裡的「保底月收入」。收入季末才補,季中每期至少用這個數字算。"""
+    import re
+    from pathlib import Path
+    p = Path(budget_file)
+    if not p.exists():
+        return 0.0
+    m = re.search(r"保底月收入\s*\**\s*([\d,]+)", p.read_text(encoding="utf-8"))
+    return float(m.group(1).replace(",", "")) if m else 0.0
+
+
+def income_with_floor(actual_by_period: dict, periods, floor: float) -> float:
+    """每期收入 = max(實際入帳, 保底)。"""
+    return sum(max(actual_by_period.get(p, 0.0), floor) for p in periods)

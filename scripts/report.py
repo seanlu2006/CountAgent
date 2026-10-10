@@ -12,7 +12,7 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from period import period_of, period_range  # noqa: E402
+from period import baseline_income, period_of, period_range  # noqa: E402
 
 LEDGER = Path(__file__).resolve().parent.parent / "data" / "ledger.csv"
 
@@ -56,7 +56,12 @@ def main():
     print(f"📊 {month} 月報  ({a:%m/%d} ~ {b:%m/%d},依信用卡帳期)")
     print("=" * 32)
     print(f"筆數    : {rows}")
-    print(f"總收入  : {fmt(income)}")
+    floor = baseline_income(LEDGER.parent / "budget.md")
+    if income < floor:
+        print(f"總收入  : {fmt(floor)}   (實際入帳 {fmt(income)},以保底計;收入季末補)")
+        income = floor
+    else:
+        print(f"總收入  : {fmt(income)}")
     print(f"總支出  : {fmt(expense)}")
     print(f"結餘    : {fmt(income - expense)}")
     if invest:

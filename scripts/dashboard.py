@@ -20,7 +20,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from period import period_days, period_of, period_range, quarter_of  # noqa: E402
+from period import baseline_income, income_with_floor, period_days, period_of, period_range, quarter_of  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 LEDGER = ROOT / "data" / "ledger.csv"
@@ -125,7 +125,7 @@ def _point(label, day_rows):
             "items": [[r["item"], r["amount"], r["category"]] for r in items]}
 
 
-def build_view(key, label, kind, days, rows, budget, save):
+def build_view(key, label, kind, days, rows, budget, save, floor=0.0):
     """days: 這個視圖涵蓋的日期(只到今天為止)。"""
     span = {d.isoformat() for d in days}
     vr = [r for r in rows if r["date"] in span]
@@ -145,13 +145,22 @@ def build_view(key, label, kind, days, rows, budget, save):
             weeks[d - timedelta(days=d.weekday())].extend(by_day[d.isoformat()])
         points = [_point(f"{w.month}/{w.day}", weeks[w]) for w in sorted(weeks)]
 
-    n_months = len({period_of(d) for d in days})
+    periods = sorted({period_of(d) for d in days})
+    n_months = len(periods)
+    inc_by = defaultdict(float)
+    for r in vr:
+        if r["type"] == "收入":
+            inc_by[period_of(r["date"])] += r["amount"]
+    actual_income = sum(inc_by.values())
+    income = income_with_floor(inc_by, periods, floor)
     biggest = max(exp, key=lambda r: r["amount"], default=None)
     return {
         "key": key, "label": label, "kind": kind,
         "range": f"{days[0].month}/{days[0].day}–{days[-1].month}/{days[-1].day}" if days else "",
         "nDays": len(days), "nMonths": n_months,
-        "income": sum(r["amount"] for r in vr if r["type"] == "收入"),
+        "income": income,
+        "floorUsed": income > actual_income,
+        "floor": floor,
         "expense": sum(r["amount"] for r in exp),
         "invest": sum(r["amount"] for r in vr if r["type"] == "投資"),
         "fixed": sum(r["amount"] for r in exp if r["fixed"]),
@@ -164,7 +173,7 @@ def build_view(key, label, kind, days, rows, budget, save):
     }
 
 
-def build(raw, budget, save):
+def build(raw, budget, save, floor=0.0):
     rows = [_row(r) for r in raw if r.get("date")]
     today = date.today()
     # 月 = 信用卡帳期(上月 24 ~ 本月 23),見 period.py
@@ -173,7 +182,7 @@ def build(raw, budget, save):
     def month_days(ym):
         return period_days(ym, until=today)
 
-    views = [build_view(ym, f"{int(ym[5:])}月", "month", month_days(ym), rows, budget, save)
+    views = [build_view(ym, f"{int(ym[5:])}月", "month", month_days(ym), rows, budget, save, floor)
              for ym in months]
 
     # 季:三個帳期,資料裡至少有兩期才列
@@ -183,7 +192,7 @@ def build(raw, budget, save):
     for (y, q), yms in sorted(quarters.items()):
         if len(yms) >= 2:
             days = [d for ym in yms for d in month_days(ym)]
-            views.append(build_view(f"{y}Q{q}", f"Q{q}", "quarter", days, rows, budget, save))
+            views.append(build_view(f"{y}Q{q}", f"Q{q}", "quarter", days, rows, budget, save, floor))
 
     month_views = [i for i, v in enumerate(views) if v["kind"] == "month"]
     default = month_views[-1] if month_views else 0
@@ -604,7 +613,7 @@ const D = __DATA__;
     go(K.exp.s, v.expense); go(K.inc.s, v.income); go(K.net.s, v.income - v.expense); go(K.inv.s, v.invest);
     const fb = v.budget['飲食'] || 0, tb = Object.values(v.budget).reduce((a, c) => a + c, 0);
     K.exp.el.querySelector('.sub').textContent = tb ? `預算 ${fmt(tb)} · 用掉 ${Math.round(v.expense / tb * 100)}%` : '';
-    K.inc.el.querySelector('.sub').textContent = v.income ? '' : '收入季末整理';
+    K.inc.el.querySelector('.sub').textContent = v.floorUsed ? `以保底 ${fmt(v.floor)}/月計，季末補實際` : (v.income ? '' : '收入季末整理');
     K.net.el.querySelector('.sub').textContent = v.income ? `儲蓄率 ${Math.round((v.income - v.expense) / v.income * 100)}%` : '收入補齊後才準';
     K.inv.el.querySelector('.sub').textContent = v.invest ? '不計入支出' : '這段期間沒有扣款';
     setChart(v, first); setCats(v, first); setStats(v); setRows(v);
@@ -699,7 +708,8 @@ def main():
     args = ap.parse_args()
 
     budget, save = load_budget(args.demo)
-    data = build(load_rows(args.demo), budget, save)
+    floor = baseline_income(BUDGET_FILES[1] if args.demo or not BUDGET_FILES[0].exists() else BUDGET_FILES[0])
+    data = build(load_rows(args.demo), budget, save, floor)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     OUT.write_text(HTML.replace("__DATA__", payload), encoding="utf-8")
