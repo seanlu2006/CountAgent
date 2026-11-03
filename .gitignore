@@ -16,3 +16,6 @@ __pycache__/
 
 # Claude Code 本機設定
 .claude/settings.local.json
+
+# 上架用的打包檔
+dist/
