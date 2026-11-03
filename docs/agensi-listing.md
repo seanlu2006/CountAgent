@@ -1,6 +1,6 @@
 # Agensi 上架草稿(CountAgent)
 
-> 草稿,上架前 Sean 過目。價格:3 USD(**Agensi 抽成待確認**)。授權:GitHub 維持 MIT(方案 A)。
+> 草稿,上架前 Sean 過目。價格:3 USD(**Agensi 抽成待確認**)。授權:2026-11-03 改為 PolyForm Shield 1.0.0(`mit-final` 以前維持 MIT)。
 > 所有功能敘述都對得上目前 repo 的實際功能;沒有編任何使用者數或評價。
 
 ## Name
@@ -43,7 +43,7 @@ finance, budgeting, expense-tracker, personal-finance, bank-import, productivity
 ## Price
 3 USD
 
-The source is also public on GitHub under MIT. The listing is the ready-to-install version.
+The source is on GitHub under PolyForm Shield (use and modify it freely, but you may not offer a competing product). The listing is the ready-to-install version.
 
 ---
 

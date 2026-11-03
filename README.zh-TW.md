@@ -196,4 +196,4 @@ CountAgent/
 
 ## 授權
 
-[MIT](LICENSE)。拿去改、拿去用都可以。
+2026-11-03 起改用 [PolyForm Shield 1.0.0](LICENSE)，屬於原始碼公開（source-available），不是 OSI 認可的開源授權。使用、修改、拿到工作上用都可以；唯一不行的是拿它提供跟它競爭的產品，例如販售它的複本或稍微改過的版本，收費或免費都一樣。再散布時請保留 LICENSE 檔和裡面的聲明行。`mit-final` 標籤（含）以前的版本以 MIT 釋出，那些版本維持 MIT。

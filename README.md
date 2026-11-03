@@ -168,4 +168,4 @@ Your data folder holds `ledger.csv`, `config.json`, `budget.md`, `profile.md`, `
 
 ## License
 
-[MIT](LICENSE). Take it, change it, use it.
+Since 2026-11-03 this project is under the [PolyForm Shield License 1.0.0](LICENSE), which makes it source-available rather than OSI open source. Use it, change it, use it at work. The one thing you can't do is use it to provide a product that competes with it, such as selling copies of it or a lightly modified version, paid or free. If you redistribute it, keep the LICENSE file and its notice lines. Everything up to and including the `mit-final` tag was released under MIT and stays MIT.
