@@ -2,21 +2,21 @@
 
 [English](README.md)
 
-**一個跑在 Claude Code 上的個人記帳 agent —— 捕捉端笨到極點，判斷端全交給 AI。**
+**一個給 Claude Code(或任何讀得懂 `SKILL.md` 的 agent)用的個人記帳 Skill —— 捕捉端笨到極點，判斷端全交給 AI。**
 
 在外面對 Siri 說一句「午餐 120」，回到電腦說一聲「整理」，
 剩下的分類、補欄位、算預算、產報表，全部由 agent 完成。
 
 ![CountAgent 儀表板](docs/dashboard.png)
 
-<sub>上圖由 `python3 scripts/dashboard.py --demo` 產生，資料全為示範假資料。</sub>
+<sub>上圖由 `python3 skills/countagent/scripts/dashboard.py --demo` 產生，資料全為示範假資料。</sub>
 
 這東西跑在自己的電腦上，沒有線上版可以點。最接近 live demo 的就是一行指令——不用帳本、不用註冊、不用設定：
 
 ```bash
 git clone https://github.com/seanlu2006/CountAgent.git
 cd CountAgent
-python3 scripts/dashboard.py --demo
+python3 skills/countagent/scripts/dashboard.py --demo
 ```
 
 ---
@@ -55,9 +55,9 @@ CountAgent 反過來，把捕捉端和整理端徹底切開：
 這正好是 LLM 擅長、而傳統規則引擎最脆弱的地方——關鍵字表永遠寫不完使用者的講法。
 
 **而規則本身是自然語言，不是程式碼。**
-Agent 的完整行為定義寫在 [`CLAUDE.md`](CLAUDE.md)（172 行、約 9.4 KB 的中文散文）：
+Agent 的完整行為定義寫在 [`SKILL.md`](skills/countagent/SKILL.md) 與幾頁參考文件裡：
 怎麼推斷分類、什麼情況該反問、投資為什麼不算支出、發票匯入後要主動複查哪些可疑分類。
-規則原文長這樣：
+規則大概長這樣：
 
 > `payment` → **沒講就預設 `信用卡`**(Sean 很少用現金);出現「付現/現金」才記 `現金`,
 > 「Line Pay/街口/悠遊付」→ `行動支付`,「轉帳/匯款/還款」→ `銀行` 或 `轉帳`。
@@ -77,78 +77,57 @@ Agent 的完整行為定義寫在 [`CLAUDE.md`](CLAUDE.md)（172 行、約 9.4 K
 - **一句話捕捉** — iOS 捷徑 + Siri 語音把一句話寫進 iCloud 的 `inbox.txt`，離線可用；捷徑有加時間戳的話，agent 就拿它當日期
 - **語意解析建帳** — agent 逐行判讀，推斷日期、收支類型、分類、付款方式與品項，append 一列九欄的帳
 - **去重防呆** — iCloud 同步可能把已處理的舊行帶回來，以歸檔檔逐字比對後跳過；同一天同金額、同品項（兩筆「午餐 90」）先只記一筆，再問是不是真的兩餐
+- **銀行對帳單匯入** — 任何銀行或信用卡的 CSV:欄位、日期順序、小數格式自動判讀;卡費還款記成轉帳;重複匯入和手動記過的會跳過
 - **電子發票匯入** — 支援載具匯出的 CSV（欄名不拘、Big5/UTF-8 自動判讀、逗號或 tab 皆可）與財政部載具 API，用發票號碼去重
-- **帳期月** — 「一個月」照信用卡結帳日切（預設上月 24 ~ 本月 23，在 `scripts/period.py` 改），預算月就對得上實際要繳的那期帳單；季＝三個帳期
+- **帳期月** — 「一個月」照信用卡結帳日切（設定 `cycle_day` 為你的結帳日；0 = 日曆月），預算月就對得上實際要繳的那期帳單；季＝三個帳期
 - **多維報表** — 月報、季度財報（儲蓄率、預算 vs 實際、固定 vs 變動支出）、互動 HTML 儀表板：每日支出對照每日預算、分類 vs 預算、只看外食、交易表、⌘K 指令面板。單一檔案、不載任何函式庫、離線可用
 - **自煮成本追蹤** — 記錄食材消耗速度，換算自煮與外食的真實單餐成本
 
 ## 快速開始
 
-需要 [Claude Code](https://claude.com/claude-code) 與 Python 3（腳本只用標準函式庫，**不需 pip 安裝任何套件**）。
+需要 [Claude Code](https://claude.com/claude-code)(或其他支援 Agent Skills 的 agent)與 Python 3.8+。
+腳本只用標準函式庫,**不需 pip 安裝任何套件**。內建繁體中文與英文,幣別不限。
+
+**安裝 skill**:
 
 ```bash
 git clone https://github.com/seanlu2006/CountAgent.git
-cd CountAgent
+mkdir -p ~/.claude/skills
+ln -s "$PWD/CountAgent/skills/countagent" ~/.claude/skills/countagent
 ```
 
-**先看長相**（用內建假資料，不會讀你的帳本；但會覆蓋 `reports/dashboard.html`，原本有的話事後重跑一次就好）：
+(不想用連結,直接把 `skills/countagent` 資料夾複製過去也行。)
 
-```bash
-python3 scripts/dashboard.py --demo
-```
+**首次設定(在任何資料夾)**:打開 Claude Code 說「幫我設定 CountAgent」。
+它會一次問完幾個問題——語言、幣別、「一個月」要不要跟信用卡結帳日走、平常怎麼付錢——
+然後建好你的資料夾(預設 `~/CountAgent/data`):帳本、預算、個人習慣、分類表。
+資料不放在 skill 資料夾裡,所以更新 skill 不會動到你的帳。
 
-**開始自己用**——複製範本建立你的私人資料檔（這些檔案都已被 `.gitignore` 排除）：
+**之後直接講話就好,記帳不需要任何指令**:
 
-```bash
-cp data/ledger.example.csv   data/ledger.csv        # 主帳本
-cp data/budget.example.md    data/budget.md         # 預算（季報會讀）
-cp data/profile.example.md   data/sean_profile.md   # 個人設定（付款習慣、固定支出）
-cp data/food_notes.example.md data/food_notes.md    # 食材成本筆記（選用）
-```
-
-範本裡的數字全是假的，記得換成自己的。接著在專案資料夾開 Claude Code：
-
-```bash
-claude
-```
-
-然後直接講話就好，**記帳不需要任何指令**：
-
-> 你：午餐 120
+> 你:午餐 120
 >
-> Agent：✅ #42 2026-05-31 | 支出 120 | 飲食 · 午餐（信用卡）
+> Agent:✅ #42 2026-05-31 | 支出 120 | 飲食 · 午餐(信用卡)。本月飲食已花 3,180。
 
-Agent 每次跟你開始對話，都會先看一眼 iCloud 收件匣；說一聲「整理」只是叫它現在就把累積的語音記錄一次消化完。
+問「這個月花多少」「開報表」「整理」都行。
 
-**報表指令**：
-
-```bash
-python3 scripts/report.py                 # 本期月報（印在終端機）
-python3 scripts/report.py 2026-08         # 指定帳期（7/24 ~ 8/23）
-python3 scripts/quarterly.py              # 本季財報
-python3 scripts/quarterly.py 2026Q3       # 指定季度
-python3 scripts/quarterly.py 2026Q3 --md  # 另存 reports/2026-Q3.md
-python3 scripts/dashboard.py              # 產生 reports/dashboard.html（mac 會自動開啟）
-python3 scripts/dashboard.py --no-open    # 只產生不開瀏覽器
-```
-
-**電子發票匯入**：
+**報表**(agent 會幫你跑,手動也可以):
 
 ```bash
-python3 scripts/import_csv.py 匯出檔.csv --dry-run   # 先預覽不寫入
-python3 scripts/import_csv.py 匯出檔.csv
+S=~/.claude/skills/countagent/scripts
+python3 $S/report.py                 # 本期月報
+python3 $S/report.py 2026-08         # 指定帳期
+python3 $S/quarterly.py 2026Q3 --md  # 季報,另存 markdown
+python3 $S/dashboard.py              # 產生 reports/dashboard.html(mac 會自動開啟)
+python3 $S/dashboard.py --demo       # 假資料,不讀你的帳本
 ```
 
-若要走財政部載具 API，複製 `data/secrets.example.json` 成 `data/secrets.json` 填入憑證後：
+**手機隨手記**(選用,但這是整套設計的重點):手機上一個「附加一行字到同步文字檔」的動作。
+iPhone(捷徑 + Siri)與 Android 的步驟在 [`references/inbox.md`](skills/countagent/references/inbox.md)。
 
-```bash
-python3 scripts/fetch_invoices.py --days 30 --dry-run
-```
+**銀行與信用卡對帳單**:把銀行匯出的 CSV 丟給 agent。欄位、日期順序、小數格式它自己認;卡費還款記成轉帳不重複算;手動記過的會跳過並列出來問你。說明:[`references/bank-import.md`](skills/countagent/references/bank-import.md)。
 
-**設定 Siri 捕捉端**（選用，但這是整套設計的重點）：
-用 iOS 捷徑 App 建一個捷徑，動作選「附加到文字檔案」，
-目標檔為 iCloud 捷徑資料夾中的 `inbox.txt`，內容設為時間戳加聽寫文字（時間戳要在行首，agent 才會拿它當日期），
-命名為「記一筆」即可用 Siri 喚起。Mac 端會自動同步收到。
+**台灣電子發票匯入**(CSV 匯出或財政部載具 API):[`references/einvoice-tw.md`](skills/countagent/references/einvoice-tw.md)。
 
 ## 技術架構
 
@@ -159,15 +138,15 @@ python3 scripts/fetch_invoices.py --days 30 --dry-run
               ▼
 [解析] Claude Code agent 讀 inbox.txt
    ├─▶ 比對 inbox_archive.txt 去重
-   └─▶ 依 CLAUDE.md 的規則逐行判讀語意
+   └─▶ 依 SKILL.md 與你的 profile.md 逐行判讀語意
               │
-[分類] 對照 categories.md 推斷分類，用 profile 補付款方式預設值
+[分類] 對照 categories.md 推斷分類，用設定與 profile 補付款方式
               │
-[儲存] append 一列到 data/ledger.csv（九欄，永不重排歷史列）
+[儲存] append 一列到 ledger.csv（九欄，永不重排歷史列）
               │  清空 inbox、原始行存進 archive
               ▼
-[報表] report.py      — 月報（帳期 24 ~ 23，見 period.py），印在終端機
-       quarterly.py   — 季報，讀 budget.md；加 --md 才另存 reports/<YYYY>-Q<N>.md
+[報表] report.py      — 月報（日曆月或信用卡帳期），印在終端機
+       quarterly.py   — 季報，讀 budget.md；加 --md 另存 markdown
        dashboard.py   — 產生 reports/dashboard.html
 
 另一條進帳路徑：
@@ -182,38 +161,38 @@ python3 scripts/fetch_invoices.py --days 30 --dry-run
 
 ```
 CountAgent/
-├── CLAUDE.md                    # Agent 行為定義（本專案的核心，用自然語言寫的規則）
-├── data/
-│   ├── categories.md            # 分類定義（公開）
-│   ├── ledger.example.csv       # 帳本範本（假資料）
-│   ├── budget.example.md        # 預算範本（假資料）
-│   ├── profile.example.md       # 個人設定範本（假資料）
-│   ├── food_notes.example.md    # 食材成本範本（假資料）
-│   └── secrets.example.json     # 發票 API 憑證範本
-├── scripts/
-│   ├── report.py                # 月報
-│   ├── quarterly.py             # 季度財報（讀 budget.md）
-│   ├── dashboard.py             # HTML 儀表板（單一檔、不載函式庫）
-│   ├── period.py                # 帳期：過了結帳日就算下個月
-│   ├── import_csv.py            # 電子發票 CSV 匯入
-│   ├── fetch_invoices.py        # 財政部載具 API 抓取
-│   └── categorize.py            # 店名 → 分類的共用規則
-├── docs/dashboard.png           # 上面那張截圖
-└── reports/                     # 產出的報表（不進版控）
+├── skills/countagent/             # skill 本體——安裝的就是這個資料夾
+│   ├── SKILL.md                   # Agent 行為定義(自然語言寫的規則)
+│   ├── references/                # 首次設定、手機收件匣、報表與預算、台灣發票
+│   ├── scripts/
+│   │   ├── cfg.py                 # 找資料夾與設定(--where)
+│   │   ├── setup.py               # 首次設定,不覆蓋既有檔
+│   │   ├── report.py              # 月報
+│   │   ├── quarterly.py           # 季報
+│   │   ├── dashboard.py           # HTML 儀表板(單一檔、不載函式庫)
+│   │   ├── period.py              # 日曆月或信用卡帳期
+│   │   ├── budget.py              # budget.md 解析(中英標題皆可)
+│   │   ├── i18n.py                # 中英文字
+│   │   ├── import_bank.py         # 銀行 / 信用卡對帳單 CSV 匯入(任何銀行)
+│   │   ├── import_csv.py          # 電子發票 CSV 匯入
+│   │   ├── fetch_invoices.py      # 財政部載具 API
+│   │   └── categorize.py          # 店名 → 分類
+│   └── templates/{en,zh-TW}/      # 起始檔案,數字全是假的
+├── docs/dashboard.png             # 上面那張截圖
+└── data/, reports/                # 維護者自己的帳本——gitignore,永不公開
 ```
 
-實際的帳本、預算、個人設定與報表都不在版控內，clone 下來只有程式碼、行為定義與假資料範本。
-`data/` 的 .gitignore 採「預設全擋、白名單放行」，所以日後在 data/ 新增任何私人檔案，
-都不會因為忘了加規則而被 commit 進去。
+你的資料夾裡有 `ledger.csv`、`config.json`、`budget.md`、`profile.md`、`categories.md` 與收件匣歸檔。
+用 `python3 skills/countagent/scripts/cfg.py --where` 查位置;環境變數 `COUNTAGENT_DATA=/路徑` 可覆蓋。
 
 ## 已知限制
 
-- **依賴 Claude Code**：這不是獨立 App。沒有 Claude Code 的話，剩下的只是幾支能讀 CSV 的 Python 腳本，記帳那一半不會動。
+- **需要 agent**：這不是獨立 App。沒有 Claude Code(或其他支援 skill 的 agent)的話，剩下的只是幾支能讀 CSV 的 Python 腳本，記帳那一半不會動。
 - **LLM 判讀不保證全對**：語意模糊的句子（「那個 300」）會被留在收件匣等人確認；電子發票是**用店名猜分類**，超商買日用品就會歸錯，需要事後複查。
 - **單人單機**：靠 iCloud 檔案同步，沒有多人共帳、沒有多裝置即時同步。同步有延遲，也可能把舊行帶回來（靠歸檔比對去重處理）。
-- **捕捉端綁 Apple 生態**：Siri + iOS 捷徑寫 iCloud 檔案。換平台就得自己做一個「能附加一行字到某個檔案」的捕捉端——不過也就這樣而已，這層本來就設計得很薄。
-- **財政部 API 需要 AppID**，申請頁常在維護，所以目前主用 CSV 匯入那條路。
-- **固定 vs 變動要自己標**：季報是看 `note` 有沒有「固定」兩字，沒標到的固定支出會被算成變動。
+- **手機捕捉端要自己接**：iPhone 有現成步驟;Android 要自己做一個「附加一行字到同步檔案」的動作——不過也就這樣而已，這層本來就設計得很薄。
+- **(台灣)財政部 API 需要 AppID**，申請頁常在維護，所以目前主用 CSV 匯入那條路。
+- **固定 vs 變動看標記**：`note` 含「固定」(或 fixed)才算固定。profile 裡列的固定支出 agent 會自動標;沒標到的會被算成變動。
 
 ## 授權
 

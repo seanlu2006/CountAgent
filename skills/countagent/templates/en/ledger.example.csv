@@ -1,0 +1,7 @@
+id,date,type,amount,category,item,payment,note,receipt
+1,2026-01-01,expense,12,Dining,lunch,card,,
+2,2026-01-01,expense,3,Transport,bus,mobile pay,,
+3,2026-01-02,expense,48,Groceries,supermarket,card,,
+4,2026-01-05,income,2000,Salary,monthly pay,bank,,
+5,2026-01-05,investment,200,Investment,index fund auto-invest,bank,,
+6,2026-01-10,transfer,600,Transfer,credit card repayment,bank,not spending,

@@ -12,7 +12,6 @@
 import argparse
 import csv
 import json
-import re
 import subprocess
 import sys
 from collections import defaultdict
@@ -20,12 +19,18 @@ from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from period import baseline_income, income_with_floor, period_days, period_of, period_range, quarter_of  # noqa: E402
+from period import baseline_income, budget_extras, first_date, income_with_floor, period_days, period_of, period_range, quarter_of  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent
-LEDGER = ROOT / "data" / "ledger.csv"
-BUDGET_FILES = [ROOT / "data" / "budget.md", ROOT / "data" / "budget.example.md"]
-OUT = ROOT / "reports" / "dashboard.html"
+import budget  # noqa: E402
+from cfg import BUDGET, LEDGER, REPORTS, S, template  # noqa: E402
+from i18n import DASH, DEC, LANG, SYM, amount, is_fixed, kind, month_label, other, t, warn_bad  # noqa: E402
+
+EAT = S.get("eat_out_category", "Dining")
+GROC = S.get("groceries_category", "Groceries")
+
+DEMO_BUDGET = template("budget.example.md")
+OUT = REPORTS / "dashboard.html"
+OUT_DEMO = REPORTS / "dashboard-demo.html"  # 示範版另存,不蓋掉真的儀表板
 
 
 def _demo_date(months_ago: int, day: int) -> str:
@@ -73,66 +78,69 @@ DEMO_ROWS = [
     {"date": _demo_date(0, 25), "type": "支出", "amount": "540", "category": "食材", "item": "市場買菜"},
 ]
 
+# 英文版示範:分類/品項換成英文,金額約 ÷30 換成美元量級
+_EN = {"收入": "income", "支出": "expense", "投資": "investment", "薪資": "Salary", "副業": "Side gig",
+       "居住": "Housing", "飲食": "Dining", "食材": "Groceries", "交通": "Transport", "購物": "Shopping",
+       "醫療": "Health", "娛樂": "Entertainment", "日用": "Household", "月薪": "Pay", "房租": "Rent",
+       "外食合計": "Eating out", "接案": "Freelance job", "餐飲合計": "Eating out", "捷運+加油": "Metro + fuel",
+       "ETF 定期定額": "Index fund auto-invest", "午餐": "Lunch", "晚餐": "Dinner", "超市採買": "Supermarket",
+       "衣服": "Clothes", "看診拿藥": "Doctor + medicine", "聚餐": "Dinner with friends",
+       "電影+串流": "Movie + streaming", "生活用品": "Toiletries", "午餐 便當": "Lunch box", "市場買菜": "Market",
+       "固定": "fixed"}
+
+
+def _demo_en():
+    def en(k, v):
+        if k == "amount":
+            return str(round(int(v) / 30))
+        if k == "category" and v == "投資":
+            return "Investment"
+        return v if k == "date" else _EN.get(v, v)
+    return [{k: en(k, v) for k, v in r.items()} for r in DEMO_ROWS]
+
 
 def load_rows(demo: bool):
     if demo:
-        return DEMO_ROWS
+        return DEMO_ROWS if LANG == "zh-TW" else _demo_en()
     if not LEDGER.exists():
         return []
     with LEDGER.open(encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
 
+def budget_file(demo: bool = False):
+    """--demo 只讀範本,不碰私人預算;真的儀表板只讀使用者的 budget.md(沒有就不顯示預算)。"""
+    return DEMO_BUDGET if demo else BUDGET
+
+
 def load_budget(demo: bool = False):
-    """讀 data/budget.md(沒有就讀範本)的「每月分類預算」表格。--demo 只讀範本,不碰私人預算。"""
-    for p in (BUDGET_FILES[1:] if demo else BUDGET_FILES):
-        if not p.exists():
-            continue
-        cats, save, in_tbl = {}, 0.0, False
-        for line in p.read_text(encoding="utf-8").splitlines():
-            if line.startswith("#"):
-                in_tbl = "每月分類預算" in line
-            if "每月淨存目標" in line:
-                m = re.search(r"(\d[\d,]*)", line.split(":")[-1])
-                save = float(m.group(1).replace(",", "")) if m else 0.0
-            elif in_tbl:
-                m = re.match(r"\s*\|\s*([^|]+?)\s*\|\s*(\d[\d,]*)\s*\|", line)
-                if m and m.group(1) not in ("分類", "項目"):
-                    cats[m.group(1).strip()] = float(m.group(2).replace(",", ""))
-        return cats, save
-    return {}, 0.0
-
-
-def num(r):
-    try:
-        return float(str(r.get("amount", "0")).replace(",", ""))
-    except ValueError:
-        return 0.0
+    b = budget.load(budget_file(demo))
+    return b["cats"], b["save_month"]
 
 
 def _row(r):
-    return {"date": r.get("date", ""), "type": r.get("type", ""), "amount": round(num(r)),
+    return {"date": r.get("date", ""), "type": kind(r.get("type", "")), "amount": round(amount(r.get("amount")), 2),
             "category": r.get("category", ""), "item": r.get("item", ""),
-            "payment": r.get("payment", ""), "fixed": "固定" in (r.get("note") or "")}
+            "payment": r.get("payment", ""), "fixed": is_fixed(r.get("note"))}
 
 
 def _point(label, day_rows):
-    exp = [r for r in day_rows if r["type"] == "支出"]
+    exp = [r for r in day_rows if r["type"] == "expense"]
     items = sorted(exp, key=lambda r: -r["amount"])[:6]
     return {"label": label,
             "total": sum(r["amount"] for r in exp),
-            "food": sum(r["amount"] for r in exp if r["category"] == "飲食"),
+            "food": sum(r["amount"] for r in exp if r["category"] == EAT),
             "items": [[r["item"], r["amount"], r["category"]] for r in items]}
 
 
-def build_view(key, label, kind, days, rows, budget, save, floor=0.0):
+def build_view(key, label, kind, days, rows, budget, save, floor=0.0, extras=None, first=""):
     """days: 這個視圖涵蓋的日期(只到今天為止)。"""
     span = {d.isoformat() for d in days}
     vr = [r for r in rows if r["date"] in span]
-    exp = [r for r in vr if r["type"] == "支出"]
+    exp = [r for r in vr if r["type"] == "expense"]
     cats = defaultdict(float)
     for r in exp:
-        cats[r["category"] or "其他"] += r["amount"]
+        cats[r["category"] or other()] += r["amount"]
 
     by_day = defaultdict(list)
     for r in vr:
@@ -149,10 +157,10 @@ def build_view(key, label, kind, days, rows, budget, save, floor=0.0):
     n_months = len(periods)
     inc_by = defaultdict(float)
     for r in vr:
-        if r["type"] == "收入":
+        if r["type"] == "income":
             inc_by[period_of(r["date"])] += r["amount"]
     actual_income = sum(inc_by.values())
-    income = income_with_floor(inc_by, periods, floor)
+    income = income_with_floor(inc_by, periods, floor, first)
     biggest = max(exp, key=lambda r: r["amount"], default=None)
     return {
         "key": key, "label": label, "kind": kind,
@@ -162,10 +170,10 @@ def build_view(key, label, kind, days, rows, budget, save, floor=0.0):
         "floorUsed": income > actual_income,
         "floor": floor,
         "expense": sum(r["amount"] for r in exp),
-        "invest": sum(r["amount"] for r in vr if r["type"] == "投資"),
+        "invest": sum(r["amount"] for r in vr if r["type"] == "investment"),
         "fixed": sum(r["amount"] for r in exp if r["fixed"]),
-        "cats": {k: round(v) for k, v in cats.items()},
-        "budget": {k: v * n_months for k, v in budget.items()},
+        "cats": {k: round(v, 2) for k, v in cats.items()},
+        "budget": _with_extras({k: v * n_months for k, v in budget.items()}, periods, extras),
         "save": save * n_months,
         "points": points,
         "biggest": [biggest["item"], biggest["amount"], biggest["date"]] if biggest else None,
@@ -173,16 +181,26 @@ def build_view(key, label, kind, days, rows, budget, save, floor=0.0):
     }
 
 
-def build(raw, budget, save, floor=0.0):
-    rows = [_row(r) for r in raw if r.get("date")]
+def _with_extras(bud, periods, extras):
+    """把「單期加碼」加進涵蓋到的帳期。"""
+    for p in periods:
+        for c, amt in (extras or {}).get(p, {}).items():
+            bud[c] = bud.get(c, 0) + amt
+    return bud
+
+
+def build(raw, budget, save, floor=0.0, extras=None):
+    warn_bad([r.get("id") or "?" for r in raw if r.get("date") and amount(r.get("amount")) is None])
+    rows = [_row(r) for r in raw if r.get("date") and amount(r.get("amount")) is not None]
+    first = first_date(rows)
     today = date.today()
     # 月 = 信用卡帳期(上月 24 ~ 本月 23),見 period.py
-    months = sorted({period_of(r["date"]) for r in rows if r["type"] == "支出"})[-6:]
+    months = sorted({period_of(r["date"]) for r in rows if r["type"] == "expense"})[-6:]
 
     def month_days(ym):
         return period_days(ym, until=today)
 
-    views = [build_view(ym, f"{int(ym[5:])}月", "month", month_days(ym), rows, budget, save, floor)
+    views = [build_view(ym, month_label(ym), "month", month_days(ym), rows, budget, save, floor, extras, first)
              for ym in months]
 
     # 季:三個帳期,資料裡至少有兩期才列
@@ -192,20 +210,20 @@ def build(raw, budget, save, floor=0.0):
     for (y, q), yms in sorted(quarters.items()):
         if len(yms) >= 2:
             days = [d for ym in yms for d in month_days(ym)]
-            views.append(build_view(f"{y}Q{q}", f"Q{q}", "quarter", days, rows, budget, save, floor))
+            views.append(build_view(f"{y}Q{q}", f"Q{q}", "quarter", days, rows, budget, save, floor, extras, first))
 
     month_views = [i for i, v in enumerate(views) if v["kind"] == "month"]
     default = month_views[-1] if month_views else 0
-    if len(month_views) > 1 and sum(1 for r in views[default]["rows"] if r["type"] == "支出") < 3:
+    if len(month_views) > 1 and sum(1 for r in views[default]["rows"] if r["type"] == "expense") < 3:
         default = month_views[-2]
 
-    all_cats = sorted({c for v in views for c in v["cats"]} | set(budget))
+    all_cats = sorted({c for v in views for c in v["cats"]} | {c for v in views for c in v["budget"]})
     return {"views": views, "default": default, "cats": all_cats,
-            "generated": today.isoformat()}
+            "generated": today.isoformat(), "t": DASH[LANG], "sym": SYM, "dec": DEC, "eat": EAT, "groc": GROC}
 
 
 HTML = r"""<!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="__T_htmlLang__">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -322,49 +340,51 @@ HTML = r"""<!DOCTYPE html>
   <header>
     <div class="brand"><span class="dot"></span>CountAgent</div>
     <nav class="tabs" id="tabs" role="tablist"><div class="ind" id="ind"></div></nav>
-    <button class="kbtn" id="kbtn" title="指令面板"><kbd>⌘K</kbd></button>
+    <button class="kbtn" id="kbtn" title="__T_palette__"><kbd>⌘K</kbd></button>
   </header>
 
   <section class="obj">
     <div class="kpis">
-      <div class="kpi" id="k-exp"><div class="lbl">支出</div><div class="val">0</div><div class="sub"></div></div>
-      <div class="kpi" id="k-inc"><div class="lbl">收入</div><div class="val">0</div><div class="sub"></div></div>
-      <div class="kpi" id="k-net"><div class="lbl">結餘</div><div class="val">0</div><div class="sub"></div></div>
-      <div class="kpi" id="k-inv"><div class="lbl">定期投資</div><div class="val">0</div><div class="sub"></div></div>
+      <div class="kpi" id="k-exp"><div class="lbl">__T_exp__</div><div class="val">0</div><div class="sub"></div></div>
+      <div class="kpi" id="k-inc"><div class="lbl">__T_inc__</div><div class="val">0</div><div class="sub"></div></div>
+      <div class="kpi" id="k-net"><div class="lbl">__T_net__</div><div class="val">0</div><div class="sub"></div></div>
+      <div class="kpi" id="k-inv"><div class="lbl">__T_inv__</div><div class="val">0</div><div class="sub"></div></div>
     </div>
     <div class="chead">
-      <h2 id="ctitle">每日支出</h2>
-      <span class="legend"><i></i><span id="ltext">每日預算</span></span>
-      <button class="toggle" id="toggle" role="switch" aria-checked="false">只看外食
+      <h2 id="ctitle"></h2>
+      <span class="legend"><i></i><span id="ltext"></span></span>
+      <button class="toggle" id="toggle" role="switch" aria-checked="false">__T_onlyEatOut__
         <span class="sw"><span class="fill" id="swfill"></span><span class="knob" id="knob"></span></span></button>
     </div>
     <div class="chart" id="chart">
       <div class="bars" id="bars"><div class="bline" id="bline"></div></div>
       <div id="xls"></div>
       <div class="tip" id="tip"></div>
-      <div class="empty" id="cempty" hidden>這段期間還沒有支出</div>
+      <div class="empty" id="cempty" hidden>__T_empty__</div>
     </div>
   </section>
 
   <div class="grid">
-    <section class="panel"><h3><span>分類 vs 預算</span><span id="cbud"></span></h3><div class="cats" id="cats"></div></section>
-    <section class="panel"><h3><span>重點</span></h3><div class="stats" id="stats"></div></section>
+    <section class="panel"><h3><span>__T_catVsBud__</span><span id="cbud"></span></h3><div class="cats" id="cats"></div></section>
+    <section class="panel"><h3><span>__T_highlights__</span></h3><div class="stats" id="stats"></div></section>
   </div>
 
   <section class="panel list">
-    <h3><span id="ltitle">交易</span><span id="lcount"></span></h3>
-    <table><thead><tr><th>日期</th><th>分類</th><th>品項</th><th>付款</th><th class="a">金額</th></tr></thead>
+    <h3><span id="ltitle"></span><span id="lcount"></span></h3>
+    <table><thead><tr><th>__T_c0__</th><th>__T_c1__</th><th>__T_c2__</th><th>__T_c3__</th><th class="a">__T_c4__</th></tr></thead>
     <tbody id="rows"></tbody></table>
   </section>
   <div class="foot" id="foot"></div>
 </div>
 
 <div class="toast" id="toast"><span class="td"></span><span id="ttext"></span><span class="tl"><i id="tbar"></i></span></div>
-<div class="pal-bg" id="palbg" hidden><div class="pal" id="pal"><input id="pin" placeholder="切換月份、季、外食模式…" autocomplete="off"><div id="plist"></div></div></div>
+<div class="pal-bg" id="palbg" hidden><div class="pal" id="pal"><input id="pin" placeholder="__T_palPh__" autocomplete="off"><div id="plist"></div></div></div>
 
 <script>
 const D = __DATA__;
 (() => {
+  const T = D.t, CUR = D.sym, EAT = D.eat, GROC = D.groc;
+  const tf = (s, o) => s.replace(/\{(\w+)\}/g, (_, k) => o[k]);
   // ---------------------------------------------------------------- 彈簧(同 morph-motion 的閉式解)
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -408,7 +428,7 @@ const D = __DATA__;
 
   // ---------------------------------------------------------------- 工具
   const $ = s => document.querySelector(s);
-  const fmt = n => Math.round(n).toLocaleString('en-US');
+  const fmt = n => Number(n).toLocaleString('en-US', { minimumFractionDigits: D.dec, maximumFractionDigits: D.dec });
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const V = D.views;
   let cur = D.default, foodMode = false;
@@ -445,7 +465,7 @@ const D = __DATA__;
     }
   }
   function dayBudget(v) {
-    const b = v.budget, tot = foodMode ? (b['飲食'] || 0) : Object.values(b).reduce((a, c) => a + c, 0);
+    const b = v.budget, tot = foodMode ? (b[EAT] || 0) : Object.values(b).reduce((a, c) => a + c, 0);
     return tot / v.nMonths / (v.kind === 'month' ? 30 : 30 / 7) || 0;
   }
   function setChart(v, first) {
@@ -458,8 +478,9 @@ const D = __DATA__;
     const stagger = Math.min(.04, .6 / Math.max(n, 1));     // morph-motion 是 40ms 一根
     bars.forEach((b, k) => b.h.set(k < n ? val(pts[k]) / maxV * BH : 0, 'morph', k * stagger));
     lineY.set(BH - bud / maxV * BH, 'morph');
-    $('#ltext').textContent = (v.kind === 'month' ? '每日' : '每週') + (foodMode ? '外食預算 ' : '預算 ') + fmt(bud);
-    $('#ctitle').textContent = (v.kind === 'month' ? '每日' : '每週') + (foodMode ? '外食' : '支出');
+    $('#ltext').textContent = (v.kind === 'month' ? T.daily : T.weekly) + (foodMode ? T.eatBudget : T.budget) + fmt(bud);
+    $('.legend').style.visibility = bud ? '' : 'hidden';
+    $('#ctitle').textContent = (v.kind === 'month' ? T.daily : T.weekly) + (foodMode ? T.eatOut : T.spend);
     $('#cempty').hidden = pts.some(p => val(p) > 0);
     // x 軸標籤:最多 8 個
     const xls = $('#xls'); xls.innerHTML = '';
@@ -473,9 +494,9 @@ const D = __DATA__;
     hover = k;
     if (k < 0) { tipV.set(0, 'snap'); return; }
     bars[k].hi.set(1, 'snap');
-    const p = pts[k], items = p.items.filter(i => !foodMode || i[2] === '飲食');
-    tip.innerHTML = `<div>${esc(p.label)}</div><b>NT$${fmt(foodMode ? p.food : p.total)}</b>` +
-      (items.length ? items.slice(0, 4).map(i => `<div class="r"><span>${esc(i[0])}</span><span>${fmt(i[1])}</span></div>`).join('') : '<div class="r">沒有紀錄</div>');
+    const p = pts[k], items = p.items.filter(i => !foodMode || i[2] === EAT);
+    tip.innerHTML = `<div>${esc(p.label)}</div><b>${CUR}${fmt(foodMode ? p.food : p.total)}</b>` +
+      (items.length ? items.slice(0, 4).map(i => `<div class="r"><span>${esc(i[0])}</span><span>${fmt(i[1])}</span></div>`).join('') : `<div class="r">${T.noRec}</div>`);
     tipX.set((k + .5) * colW.last, tipV.get() > .3 ? 'snap' : 'snap');
     if (tipV.get() < .05) tipX.jump((k + .5) * colW.last);
     tipV.set(1, 'snap');
@@ -514,37 +535,37 @@ const D = __DATA__;
     });
     first ? catsH.jump(shown.length * RH) : catsH.set(shown.length * RH);
     const tb = Object.values(v.budget).reduce((a, c) => a + c, 0);
-    $('#cbud').textContent = tb ? `預算 ${fmt(tb)}` : '';
+    $('#cbud').textContent = tb ? tf(T.budgetN, { n: fmt(tb) }) : '';
   }
 
   // ---------------------------------------------------------------- 重點卡
   const statsEl = $('#stats');
   function setStats(v) {
-    const days = v.nDays, food = v.cats['飲食'] || 0, groc = v.cats['食材'] || 0;
-    const fb = v.budget['飲食'] || 0;
+    const days = v.nDays, food = v.cats[EAT] || 0, groc = v.cats[GROC] || 0;
+    const fb = v.budget[EAT] || 0;
     const big = v.biggest;
     const cards = [
-      ['日均支出', `NT$${fmt(v.expense / Math.max(days, 1))}`, `${days} 天`],
-      ['最大單筆', big ? `NT$${fmt(big[1])}` : '—', big ? `${big[2].slice(5).replace('-', '/')} ${big[0]}` : ''],
-      ['外食預算用掉', fb ? `${Math.round(food / fb * 100)}%` : '—', fb ? `${fmt(food)} / ${fmt(fb)}` : ''],
-      ['固定支出', `NT$${fmt(v.fixed)}`, v.expense ? `佔支出 ${Math.round(v.fixed / v.expense * 100)}%` : ''],
+      [T.avgDay, `${CUR}${fmt(v.expense / Math.max(days, 1))}`, tf(T.days, { n: days })],
+      [T.biggest, big ? `${CUR}${fmt(big[1])}` : '—', big ? `${big[2].slice(5).replace('-', '/')} ${big[0]}` : ''],
+      [T.eatUsed, fb ? `${Math.round(food / fb * 100)}%` : '—', fb ? `${fmt(food)} / ${fmt(fb)}` : ''],
+      [T.fixed, `${CUR}${fmt(v.fixed)}`, v.expense ? tf(T.fixedShare, { n: Math.round(v.fixed / v.expense * 100) }) : ''],
     ];
     const ratio = food + groc ? groc / (food + groc) : 0;
     statsEl.innerHTML = cards.map(c => `<div class="stat"><div class="l">${c[0]}</div><div class="v">${c[1]}</div><div class="s">${esc(c[2])}</div></div>`).join('') +
-      `<div class="stat" style="grid-column:1/-1"><div class="l">自己煮 vs 外食</div>
+      `<div class="stat" style="grid-column:1/-1"><div class="l">${T.cookVsOut}</div>
         <div class="split"><i style="width:${(ratio * 100).toFixed(1)}%;background:var(--lime)"></i><i style="flex:1;background:var(--ink);opacity:.85"></i></div>
-        <div class="s">食材 NT$${fmt(groc)}（${Math.round(ratio * 100)}%）· 外食 NT$${fmt(food)}</div></div>`;
+        <div class="s">${esc(GROC)} ${tf(T.grocLine, { g: CUR + fmt(groc), p: Math.round(ratio * 100), f: CUR + fmt(food) })}</div></div>`;
   }
 
   // ---------------------------------------------------------------- 交易表
   function setRows(v) {
-    const rows = v.rows.filter(r => !foodMode || r.category === '飲食');
-    $('#ltitle').textContent = (foodMode ? '外食紀錄' : '交易') + ' · ' + v.range;
-    $('#lcount').textContent = `${rows.length} 筆`;
-    const sign = r => r.type === '收入' ? '+' : r.type === '支出' ? '−' : '';
-    const cls = r => r.type === '收入' ? 'in' : r.type === '投資' ? 'iv' : '';
+    const rows = v.rows.filter(r => !foodMode || r.category === EAT);
+    $('#ltitle').textContent = (foodMode ? T.eatLog : T.tx) + ' · ' + v.range;
+    $('#lcount').textContent = tf(T.count, { n: rows.length });
+    const sign = r => r.type === 'income' ? '+' : r.type === 'expense' ? '−' : '';
+    const cls = r => r.type === 'income' ? 'in' : r.type === 'investment' ? 'iv' : '';
     $('#rows').innerHTML = rows.map((r, i) => `<tr class="${cls(r)}" style="animation-delay:${Math.min(i, 24) * 18}ms">
-      <td>${r.date.slice(5).replace('-', '/')}</td><td>${esc(r.category)}${r.fixed ? ' <span class="c">固定</span>' : ''}</td>
+      <td>${r.date.slice(5).replace('-', '/')}</td><td>${esc(r.category)}${r.fixed ? ` <span class="c">${T.fixedTag}</span>` : ''}</td>
       <td>${esc(r.item)}</td><td class="c">${esc(r.payment)}</td><td class="a">${sign(r)}${fmt(r.amount)}</td></tr>`).join('');
   }
 
@@ -556,8 +577,8 @@ const D = __DATA__;
     kL.set(on ? 25 : 3, on ? 'trail' : 'lead'); kR.set(on ? 49 : 27, on ? 'lead' : 'trail');
     lime.set(on ? 1 : 0, 'morph');
     const v = V[cur]; setChart(v); setRows(v);
-    const food = v.cats['飲食'] || 0, fb = v.budget['飲食'] || 0;
-    if (on) toast(fb ? `${v.label}外食 NT$${fmt(food)}，是預算的 ${Math.round(food / fb * 100)}%` : `${v.label}外食 NT$${fmt(food)}`);
+    const food = v.cats[EAT] || 0, fb = v.budget[EAT] || 0;
+    if (on) toast(fb ? tf(T.toastEat, { l: v.label, f: CUR + fmt(food), p: Math.round(food / fb * 100) }) : tf(T.toastEat0, { l: v.label, f: CUR + fmt(food) }));
   }
   tg.onclick = () => setToggle(!foodMode);
 
@@ -572,8 +593,8 @@ const D = __DATA__;
   const palbg = $('#palbg'), pin = $('#pin'), plist = $('#plist'), pv = spring(0);
   let pItems = [], pSel = 0;
   function cmds() {
-    return [...V.map((v, i) => ({ t: `切換到 ${v.label}`, k: v.kind === 'month' ? v.key : '季報', run: () => select(i) })),
-      { t: foodMode ? '關閉外食模式' : '只看外食', k: '開關', run: () => setToggle(!foodMode) }];
+    return [...V.map((v, i) => ({ t: tf(T.goTo, { l: v.label }), k: v.kind === 'month' ? v.key : T.quarter, run: () => select(i) })),
+      { t: foodMode ? T.eatOff : T.onlyEatOut, k: T.switch, run: () => setToggle(!foodMode) }];
   }
   function drawPal() {
     const q = pin.value.trim().toLowerCase();
@@ -611,15 +632,15 @@ const D = __DATA__;
     moveInd(i, first);
     const go = (s, val) => first ? s.jump(val) : s.set(val, 'morph');
     go(K.exp.s, v.expense); go(K.inc.s, v.income); go(K.net.s, v.income - v.expense); go(K.inv.s, v.invest);
-    const fb = v.budget['飲食'] || 0, tb = Object.values(v.budget).reduce((a, c) => a + c, 0);
-    K.exp.el.querySelector('.sub').textContent = tb ? `預算 ${fmt(tb)} · 用掉 ${Math.round(v.expense / tb * 100)}%` : '';
-    K.inc.el.querySelector('.sub').textContent = v.floorUsed ? `以保底 ${fmt(v.floor)}/月計，季末補實際` : (v.income ? '' : '收入季末整理');
-    K.net.el.querySelector('.sub').textContent = v.income ? `儲蓄率 ${Math.round((v.income - v.expense) / v.income * 100)}%` : '收入補齊後才準';
-    K.inv.el.querySelector('.sub').textContent = v.invest ? '不計入支出' : '這段期間沒有扣款';
+    const fb = v.budget[EAT] || 0, tb = Object.values(v.budget).reduce((a, c) => a + c, 0);
+    K.exp.el.querySelector('.sub').textContent = tb ? tf(T.budUsed, { b: fmt(tb), p: Math.round(v.expense / tb * 100) }) : '';
+    K.inc.el.querySelector('.sub').textContent = v.floorUsed ? tf(T.floorUsed, { f: fmt(v.floor) }) : (v.income ? '' : T.incLater);
+    K.net.el.querySelector('.sub').textContent = v.income ? tf(T.rate, { p: Math.round((v.income - v.expense) / v.income * 100) }) : T.netLater;
+    K.inv.el.querySelector('.sub').textContent = v.invest ? T.invNot : T.invNone;
     setChart(v, first); setCats(v, first); setStats(v); setRows(v);
     if (!first) {
       const over = Object.keys(v.budget).filter(c => v.budget[c] > 0 && (v.cats[c] || 0) > v.budget[c]).sort((a, b) => (v.cats[b] / v.budget[b]) - (v.cats[a] / v.budget[a]));
-      toast(over.length ? `${v.label}有 ${over.length} 類超出預算，最多的是${over[0]}（${Math.round(v.cats[over[0]] / v.budget[over[0]] * 100)}%）` : `${v.label}有預算的分類都沒超支`);
+      toast(over.length ? tf(T.over, { l: v.label, n: over.length, c: over[0], p: Math.round(v.cats[over[0]] / v.budget[over[0]] * 100) }) : tf(T.noOver, { l: v.label }));
     }
     kick();
   }
@@ -634,7 +655,7 @@ const D = __DATA__;
       b.style.color = cover > .5 ? '#fff' : '';
       b.style.opacity = mix(.62, 1, cover).toFixed(3);
     });
-    for (const k in K) K[k].el.querySelector('.val').textContent = (k === 'net' && K[k].s.get(t) < -0.5 ? '−' : '') + 'NT$' + fmt(Math.abs(K[k].s.get(t)));
+    for (const k in K) K[k].el.querySelector('.val').textContent = (k === 'net' && K[k].s.get(t) < -0.5 ? '−' : '') + CUR + fmt(Math.abs(K[k].s.get(t)));
     K.net.el.className = 'kpi ' + (K.net.s.last < 0 ? 'neg' : K.net.s.last > 0 ? 'pos' : '');
 
     const cw = colW.get(t), gap = Math.max(1, Math.min(6, cw * .22));
@@ -663,7 +684,7 @@ const D = __DATA__;
       R2.f.style.borderRadius = ow > .3 ? '99px 0 0 99px' : '';
       R2.m.style.left = R2.mx.get(t) + '%'; R2.m.style.display = R2.bud ? '' : 'none';
       const A = R2.a.get(t);
-      R2.amt.textContent = 'NT$' + fmt(A) + (R2.bud ? ` · ${Math.round(R2.a.last / R2.bud * 100)}%` : '');
+      R2.amt.textContent = CUR + fmt(A) + (R2.bud ? ` · ${Math.round(R2.a.last / R2.bud * 100)}%` : '');
     }
     catsEl.style.height = catsH.get(t) + 'px';
 
@@ -684,7 +705,7 @@ const D = __DATA__;
   }
 
   addEventListener('resize', () => { moveInd(cur, true); colW.jump(chartEl.clientWidth / Math.max(pts.length, 1)); kick(); });
-  $('#foot').textContent = `產生於 ${D.generated} · 資料來源 data/ledger.csv · ←/→ 切換,⌘K 指令面板`;
+  $('#foot').textContent = tf(T.foot, { d: D.generated });
   if (!V.length) { $('#cempty').hidden = false; return; }
   select(cur, true); render(now());
   // 開場:長條從 0 錯開升起,分類條長出來
@@ -692,7 +713,7 @@ const D = __DATA__;
     const v = V[cur]; bars.forEach(b => b.h.jump(0)); setChart(v);
     D.cats.forEach(c => { CR[c].fw.jump(0); CR[c].ow.jump(0); CR[c].a.jump(0); }); setCats(v);
     K.exp.s.jump(0); K.exp.s.set(v.expense); K.inv.s.jump(0); K.inv.s.set(v.invest);
-    setTimeout(() => toast(`${v.label}支出 NT$${fmt(v.expense)}，按 ←／→ 或 ⌘K 切換期間`), 500);
+    setTimeout(() => toast(tf(T.hello, { l: v.label, e: CUR + fmt(v.expense) })), 500);
   });
 })();
 </script>
@@ -703,21 +724,27 @@ const D = __DATA__;
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--demo", action="store_true", help="用示範假資料")
-    ap.add_argument("--no-open", action="store_true", help="不自動開啟瀏覽器")
+    ap.add_argument("--demo", action="store_true", help="sample data / 示範假資料")
+    ap.add_argument("--no-open", action="store_true", help="don't open the browser / 不自動開啟")
     args = ap.parse_args()
 
     budget, save = load_budget(args.demo)
-    floor = baseline_income(BUDGET_FILES[1] if args.demo or not BUDGET_FILES[0].exists() else BUDGET_FILES[0])
-    data = build(load_rows(args.demo), budget, save, floor)
-    OUT.parent.mkdir(parents=True, exist_ok=True)
+    bfile = budget_file(args.demo)
+    floor = baseline_income(bfile)
+    data = build(load_rows(args.demo), budget, save, floor, budget_extras(bfile))
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
-    OUT.write_text(HTML.replace("__DATA__", payload), encoding="utf-8")
+    page = HTML
+    T = dict(DASH[LANG], **{f"c{i}": c for i, c in enumerate(DASH[LANG]["cols"])})
+    for k, val in T.items():
+        if isinstance(val, str):
+            page = page.replace(f"__T_{k}__", val)
+    out = OUT_DEMO if args.demo else OUT
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(page.replace("__DATA__", payload), encoding="utf-8")
 
-    tag = " (示範資料)" if args.demo else ""
-    print(f"✅ 已產生儀表板{tag}:{OUT}")
+    print(t("d_done", tag=t("d_demo") if args.demo else "", p=out))
     if not args.no_open and sys.platform == "darwin":
-        subprocess.run(["open", str(OUT)], check=False)
+        subprocess.run(["open", str(out)], check=False)
 
 
 if __name__ == "__main__":

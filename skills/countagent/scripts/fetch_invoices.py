@@ -26,9 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from categorize import categorize  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent
-LEDGER = ROOT / "data" / "ledger.csv"
-SECRETS = ROOT / "data" / "secrets.json"
+from cfg import LEDGER, SECRETS  # noqa: E402
 
 API_URL = "https://api.einvoice.nat.gov.tw/PB2CAPIVAN/invServ/InvServ"
 CARD_TYPE = "3J0002"  # 手機條碼

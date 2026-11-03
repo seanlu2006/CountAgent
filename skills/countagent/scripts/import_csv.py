@@ -17,9 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from categorize import categorize  # noqa: E402
-
-ROOT = Path(__file__).resolve().parent.parent
-LEDGER = ROOT / "data" / "ledger.csv"
+from cfg import LEDGER  # noqa: E402
 FIELDS = ["id", "date", "type", "amount", "category", "item", "payment", "note", "receipt"]
 
 # 欄位辨識:看表頭含哪些關鍵字(小寫比對)
