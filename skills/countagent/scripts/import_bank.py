@@ -135,11 +135,11 @@ def map_columns(headers, override: str):
 
 def money(s):
     """Bank amount → float. Handles 1,234.56 / 1.234,56 / (12.00) / 12.00- / 12.00 DR."""
-    t = str(s or "").strip()
+    t = str(s or "").strip().replace("\u2212", "-")  # some banks export a Unicode minus sign
     if not t:
         return None
     neg = t.startswith("(") and t.endswith(")") or t.endswith("-") or t.upper().endswith(" DR")
-    t = re.sub(r"(?i)\s*(cr|dr)$", "", t)
+    t = re.sub(r"(?i)\s*(cr|dr)$", "", t).rstrip("- ")
     if "," in t and "." in t:
         t = t.replace(",", "") if t.rfind(".") > t.rfind(",") else t.replace(".", "").replace(",", ".")
     elif re.search(r",\d{1,2}\D*$", t):
