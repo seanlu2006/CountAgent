@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from categorize import categorize  # noqa: E402
-from cfg import LEDGER  # noqa: E402
+from cfg import LEDGER, end_with_newline  # noqa: E402
 FIELDS = ["id", "date", "type", "amount", "category", "item", "payment", "note", "receipt"]
 
 # 欄位辨識:看表頭含哪些關鍵字(小寫比對)
@@ -151,6 +151,7 @@ def main():
         return
 
     write_header = not LEDGER.exists() or LEDGER.stat().st_size == 0
+    end_with_newline(LEDGER)
     with LEDGER.open("a", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS)
         if write_header:

@@ -88,7 +88,7 @@ When reporting: totals, the categories over budget, and one honest observation w
 
 More: budget format, one-off extras, reconciliation against a card statement → `references/reports.md`.
 
-**Bank or card statement (CSV)** → `scripts/import_bank.py`, always `--dry-run` first. Workflow, flags, duplicate handling: `references/bank-import.md`.
+**Bank or card statement (CSV)** → `scripts/import_bank.py`, always `--dry-run` first. Workflow, flags, duplicate handling: `references/bank-import.md`. To compare a statement with the ledger without importing: `scripts/reconcile.py` (`references/reports.md`).
 
 ## 5. Boundaries
 

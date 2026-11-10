@@ -67,6 +67,17 @@ S = settings()
 REPORTS = Path(S["reports_dir"]).expanduser() if S["reports_dir"] else DATA.parent / "reports"
 
 
+def end_with_newline(path: Path) -> None:
+    """附加資料前呼叫:檔尾沒換行的話補一個,新資料才不會黏在最後一列後面。"""
+    p = Path(path)
+    if not p.exists() or p.stat().st_size == 0:
+        return
+    with p.open("rb+") as f:
+        f.seek(-1, 2)
+        if f.read(1) not in (b"\n", b"\r"):
+            f.write(b"\n")
+
+
 def is_unfilled(path: Path) -> bool:
     """資料夾裡的 budget.md / profile.md 若跟範本一字不差,數字都是假的,不該拿來算。
     使用者改過任何一處就當作已填(避免改了數字卻因為留著範本說明而被忽略)。"""

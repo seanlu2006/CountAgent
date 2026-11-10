@@ -48,11 +48,27 @@ Baseline monthly income: 2000
 
 ## Reconciling with a card statement
 
-When the user shares a statement total (or the bank balance):
+**With the statement as a CSV**, let the script do the arithmetic. It changes nothing:
+
+```bash
+python3 <skill>/scripts/reconcile.py <statement.csv> --payment <the ledger's name for this card> [--from YYYY-MM-DD] [--to YYYY-MM-DD]
+```
+
+It pairs statement rows with ledger rows one-to-one (same amount, dates within `--window` days, 3 by default) and prints the gap, the rows only on the statement, the rows only in the ledger, and matches logged under a different payment method. `--flip`, `--dates` and `--map` work as in `import_bank.py`. Use `--from` and `--to` when the file covers more than one statement.
+
+Your job is to explain the differences:
+
+- **Only on the statement:** probably not logged. Offer to import them with `import_bank.py`.
+- **Only in the ledger:** check for the wrong payment method or a mistyped amount. A row marked as near the last day may appear on the next statement, so it isn't an error yet.
+- **The same date or item on both lists with different amounts:** likely one purchase with a typo, a tip or a currency conversion. Ask which amount is right.
+- **Different payment method:** offer to correct the ledger row.
+
+**With only a statement total** (or the bank balance):
 
 1. Sum the ledger's **card** payments for the same statement window (the period, if `cycle_day` matches the closing day).
 2. Compare. The difference is usually unlogged small purchases, a subscription that renewed, or entries logged as card that were actually cash.
-3. Show the gap, and list candidate missing items if the statement lines are available. **Don't invent entries to close the gap.** Ask, or record a single "unlogged spending (reconciliation)" entry only if the user says to.
+
+Either way, **don't invent entries to close the gap.** Ask, or record a single "unlogged spending (reconciliation)" entry only if the user says to.
 
 ## Budget planning conversations
 

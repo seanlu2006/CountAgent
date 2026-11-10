@@ -77,7 +77,8 @@ Agent 的完整行為定義寫在 [`SKILL.md`](skills/countagent/SKILL.md) 與�
 - **一句話捕捉** — iOS 捷徑 + Siri 語音把一句話寫進 iCloud 的 `inbox.txt`，離線可用；捷徑有加時間戳的話，agent 就拿它當日期
 - **語意解析建帳** — agent 逐行判讀，推斷日期、收支類型、分類、付款方式與品項，append 一列九欄的帳
 - **去重防呆** — iCloud 同步可能把已處理的舊行帶回來，以歸檔檔逐字比對後跳過；同一天同金額、同品項（兩筆「午餐 90」）先只記一筆，再問是不是真的兩餐
-- **銀行對帳單匯入** — 任何銀行或信用卡的 CSV:欄位、日期順序、小數格式自動判讀;卡費還款記成轉帳;重複匯入和手動記過的會跳過
+- **銀行對帳單匯入** — 任何銀行或信用卡的 CSV:欄位、日期順序、小數格式自動判讀;卡費還款記成轉帳;重複匯入和手動記過的會跳過,銀行晚幾天入帳也認得出來
+- **對帳** — 比對對帳單和帳本,列出差額、漏記的、銀行沒扣的,以及付款方式記錯的;不會改動帳本
 - **電子發票匯入** — 支援載具匯出的 CSV（欄名不拘、Big5/UTF-8 自動判讀、逗號或 tab 皆可）與財政部載具 API，用發票號碼去重
 - **帳期月** — 「一個月」照信用卡結帳日切（設定 `cycle_day` 為你的結帳日；0 = 日曆月），預算月就對得上實際要繳的那期帳單；季＝三個帳期
 - **多維報表** — 月報、季度財報（儲蓄率、預算 vs 實際、固定 vs 變動支出）、互動 HTML 儀表板：每日支出對照每日預算、分類 vs 預算、只看外食、交易表、⌘K 指令面板。單一檔案、不載任何函式庫、離線可用
@@ -125,7 +126,7 @@ python3 $S/dashboard.py --demo       # 假資料,不讀你的帳本
 **手機隨手記**(選用,但這是整套設計的重點):手機上一個「附加一行字到同步文字檔」的動作。
 iPhone(捷徑 + Siri)與 Android 的步驟在 [`references/inbox.md`](skills/countagent/references/inbox.md)。
 
-**銀行與信用卡對帳單**:把銀行匯出的 CSV 丟給 agent。欄位、日期順序、小數格式它自己認;卡費還款記成轉帳不重複算;手動記過的會跳過並列出來問你。說明:[`references/bank-import.md`](skills/countagent/references/bank-import.md)。
+**銀行與信用卡對帳單**:把銀行匯出的 CSV 丟給 agent。欄位、日期順序、小數格式它自己認;卡費還款記成轉帳不重複算;手動記過的會跳過並列出來問你,銀行晚幾天入帳也認得出來。想知道哪裡對不上,請它拿對帳單和帳本對帳,不會改動帳本。說明:[`references/bank-import.md`](skills/countagent/references/bank-import.md)。
 
 **台灣電子發票匯入**(CSV 匯出或財政部載具 API):[`references/einvoice-tw.md`](skills/countagent/references/einvoice-tw.md)。
 
@@ -174,6 +175,7 @@ CountAgent/
 │   │   ├── budget.py              # budget.md 解析(中英標題皆可)
 │   │   ├── i18n.py                # 中英文字
 │   │   ├── import_bank.py         # 銀行 / 信用卡對帳單 CSV 匯入(任何銀行)
+│   │   ├── reconcile.py           # 比對對帳單和帳本,只讀不改
 │   │   ├── import_csv.py          # 電子發票 CSV 匯入
 │   │   ├── fetch_invoices.py      # 財政部載具 API
 │   │   └── categorize.py          # 店名 → 分類

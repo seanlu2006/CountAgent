@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from categorize import categorize  # noqa: E402
 
-from cfg import LEDGER, SECRETS  # noqa: E402
+from cfg import LEDGER, SECRETS, end_with_newline  # noqa: E402
 
 API_URL = "https://api.einvoice.nat.gov.tw/PB2CAPIVAN/invServ/InvServ"
 CARD_TYPE = "3J0002"  # 手機條碼
@@ -171,6 +171,7 @@ def main():
         return
 
     write_header = not LEDGER.exists() or LEDGER.stat().st_size == 0
+    end_with_newline(LEDGER)
     with LEDGER.open("a", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS)
         if write_header:

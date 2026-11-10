@@ -14,7 +14,7 @@ python3 <skill>/scripts/import_bank.py <statement.csv> --payment card --dry-run
    - `Columns:` should show a date, a description, and either an amount or debit/credit columns. If it's wrong, re-run with `--map date=…,amount=…,desc=…` (or `debit=…,credit=…`).
    - **Signs.** Purchases should come out as `expense`. If they show as `income` (the script warns when most rows do), it's a statement that lists purchases as positive numbers: add `--flip`.
    - **Dates.** If the script stops because dates like `03/04/2026` could go either way, ask the user whether their bank writes day or month first. Then use `--dates dmy` or `--dates mdy`.
-4. **Possible duplicates.** Rows whose date and amount match an entry the user logged by hand are **skipped and listed**. Show the list, and ask about each one: is it the same purchase? Usually yes. If the bank row is better (the right amount, say), offer to correct the manual entry rather than importing a second one.
+4. **Possible duplicates.** A row with the same amount as an entry the user logged by hand, within 3 days, is **skipped and listed**, because banks often post a purchase days after it happened. Each hand-logged entry can only explain one row. Show the list, and ask about each one: is it the same purchase? Usually yes, but a small round amount a few days apart may be a different purchase. If it is different, re-run with `--keep <code>`, using the code in brackets at the end of its line. If the bank row is better (the right amount, say), offer to correct the manual entry rather than importing a second one. `--window N` changes the 3 days; `--window 0` means the same day only.
 5. **Write**: the same command without `--dry-run`.
 6. **Review categories.** Categories are guessed from the description and land in Other when nothing matches. Look over the rows noted `[bank import: check category]`, propose fixes in one message, and apply what the user confirms. Remove the bracketed marker once a row is confirmed, but keep `bank:<fingerprint>`.
 
@@ -26,6 +26,10 @@ python3 <skill>/scripts/import_bank.py <statement.csv> --payment card --dry-run
 - **Transfers:** card repayments ("payment thank you", "autopay"), moves to and from savings, and cash withdrawals become **transfers**, so they are not counted as spending.
 - **Salary:** salary and payroll lines become income in the salary category.
 - **Re-imports:** importing the same file (or an overlapping statement) twice adds nothing. Identical purchases on the same day (two coffees) are kept apart.
+
+## Reconcile without importing
+
+To check the ledger against a statement without changing anything, use `reconcile.py`. Details are in `references/reports.md`.
 
 ## Card and bank statements together
 

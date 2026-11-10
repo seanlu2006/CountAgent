@@ -1,6 +1,6 @@
 # Agensi 上架草稿(CountAgent)
 
-> 草稿,上架前 Sean 過目。價格:3 USD(**Agensi 抽成待確認**)。授權:2026-11-03 改為 PolyForm Shield 1.0.0(`mit-final` 以前維持 MIT)。
+> 草稿,上架前 Sean 過目。價格:1 USD(2026-11-10 Sean 決定,門檻低、先累積評價;**Agensi 抽成待確認**)。授權:2026-11-03 改為 PolyForm Shield 1.0.0(`mit-final` 以前維持 MIT)。
 > 所有功能敘述都對得上目前 repo 的實際功能;沒有編任何使用者數或評價。
 
 ## Name
@@ -19,7 +19,8 @@ Expense apps ask for two seconds of form-filling at the worst moment: standing a
 **What it does**
 - Turns one-line notes into a full entry: date, type, category, payment method, description. "Yesterday", timestamps and late-night logs land on the right day.
 - Phone capture through a plain text file. Recipe included for iPhone (Shortcuts + Siri); any app that appends a line to a synced file works.
-- Imports a bank or card statement CSV from any bank. It reads the columns, date order and number format itself, turns card repayments into transfers so nothing counts twice, and skips what you already logged by hand.
+- Imports a bank or card statement CSV from any bank. It reads the columns, date order and number format itself, turns card repayments into transfers so nothing counts twice, and skips what you already logged by hand, even when the bank posts it days later.
+- Reconciles a statement against your ledger without changing anything: the gap, what you forgot to log, what the bank never charged, and entries logged under the wrong payment method.
 - Catches the duplicates people actually make: sync bringing back old lines, and the same lunch logged twice in different words.
 - Records recurring charges you mark as automatic (subscriptions, instalments) once their day has passed. Bills you pay by hand wait until you say so.
 - Budgets per category, savings targets, one-off extras ("150 more this month for a trip").
@@ -41,7 +42,7 @@ Install the folder, then say "set up CountAgent". One round of questions (langua
 finance, budgeting, expense-tracker, personal-finance, bank-import, productivity, csv, dashboard
 
 ## Price
-3 USD
+1 USD
 
 The source is on GitHub under PolyForm Shield (use and modify it freely, but you may not offer a competing product). The listing is the ready-to-install version.
 

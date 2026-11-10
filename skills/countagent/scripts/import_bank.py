@@ -13,11 +13,16 @@ Options:
     --flip               amounts are positive for spending (some card statements)
     --dates dmy|mdy|ymd  date order, when the file alone can't tell (e.g. 03/04/2026)
     --map date=Posted,amount=Value,desc=Details   name the columns yourself
+    --window N           days apart that still count as the same purchase (default 3, 0 = same day)
+    --keep CODE,CODE     import these possible duplicates anyway (codes are in the list)
 
 Every imported row gets a note `bank:<fingerprint> [bank import: check category]`
 (`[銀行匯入,分類待確認]` in a Chinese ledger).
-Rows that look like something already in the ledger (same date and amount, not
-imported) are skipped and listed as possible duplicates, so nothing is counted twice.
+Rows that look like something logged by hand (same amount, within --window days,
+3 by default, because banks often post a purchase days after it happened) are skipped
+and listed as possible duplicates, so nothing is counted twice. One ledger row can
+only explain one statement row. If the user says a listed row is a different
+purchase, re-run with --keep <its code>.
 Standard library only.
 """
 import argparse
@@ -25,11 +30,11 @@ import csv
 import hashlib
 import re
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from cfg import LEDGER, S  # noqa: E402
+from cfg import LEDGER, S, end_with_newline  # noqa: E402
 from i18n import LANG, amount, kind  # noqa: E402
 
 FIELDS = ["id", "date", "type", "amount", "category", "item", "payment", "note", "receipt"]
@@ -37,9 +42,9 @@ FIELDS = ["id", "date", "type", "amount", "category", "item", "payment", "note",
 # Header keywords, lower-case. First match wins, so the more specific words come first.
 COL_HINTS = {
     "date":   ["transaction date", "posting date", "posted date", "value date", "booking date",
-               "date", "交易日期", "入帳日期", "日期", "buchungstag", "valuta", "datum", "fecha", "data"],
+               "date", "交易日期", "消費日", "交易日", "入帳日期", "入帳日", "日期", "buchungstag", "valuta", "datum", "fecha", "data"],
     "desc":   ["description", "details", "narrative", "merchant", "payee", "memo", "reference",
-               "transaction", "name", "說明", "摘要", "備註", "商店", "verwendungszweck", "buchungstext",
+               "transaction", "name", "說明", "摘要", "明細", "備註", "商店", "verwendungszweck", "buchungstext",
                "beschreibung", "auftraggeber", "concepto", "libellé", "libelle"],
     "debit":  ["debit", "withdrawal", "paid out", "money out", "out", "支出", "提款"],
     "credit": ["credit", "deposit", "paid in", "money in", "in", "存入", "收入"],
@@ -72,7 +77,7 @@ CATS_ZH = {"Dining": "飲食", "Groceries": "食材", "Transport": "交通", "En
 # Moving money between your own accounts, not spending or income.
 TRANSFER_HINTS = ["payment thank you", "payment received", "card payment", "credit card payment",
                   "autopay", "transfer to", "transfer from", "to savings", "from savings",
-                  "own account", "internal transfer", "atm", "cash withdrawal", "卡費", "轉帳"]
+                  "own account", "internal transfer", "atm", "cash withdrawal", "卡費", "繳款", "還款", "轉帳"]
 SALARY_HINTS = ["salary", "payroll", "wages", "gehalt", "lohn", "薪資", "薪水"]
 
 DATE_FORMATS = {
@@ -205,51 +210,27 @@ def ledger_rows():
         return list(csv.DictReader(f))
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Import a bank / card statement CSV.")
-    ap.add_argument("file")
-    ap.add_argument("--payment", default=S.get("default_payment", "card"),
-                    help="payment method for every row: card, bank, … (default: from settings)")
-    ap.add_argument("--flip", action="store_true", help="positive amounts are spending")
-    ap.add_argument("--dates", choices=["dmy", "mdy", "ymd"], help="date order, if ambiguous")
-    ap.add_argument("--map", default="", help="date=Col,amount=Col,desc=Col (or debit=,credit=)")
-    ap.add_argument("--dry-run", action="store_true")
-    args = ap.parse_args()
+def load_statement(path: Path, override: str = "", forced_dates: str = "", flip: bool = False):
+    """Read a statement → (transactions, columns, date order, unreadable dates).
 
-    path = Path(args.file).expanduser()
-    if not path.exists():
-        sys.exit(f"❌ File not found: {path}")
+    Each transaction: date, signed (negative = money out), amt, desc, kind, cat, fp.
+    Exits with a message the agent can act on if the file can't be understood.
+    """
     rows = read_rows(path)
     if not rows:
         sys.exit("❌ No data rows in the file.")
 
-    cols = map_columns(list(rows[0].keys()), args.map)
-    has_amount = "amount" in cols or ("debit" in cols or "credit" in cols)
-    print(f"🔎 Columns: {cols}")
-    if "date" not in cols or not has_amount:
+    cols = map_columns(list(rows[0].keys()), override)
+    if "date" not in cols or not ("amount" in cols or "debit" in cols or "credit" in cols):
         sys.exit("❌ Can't find the date or amount column. Headers in the file:\n"
                  f"   {list(rows[0].keys())}\n   Re-run with --map date=…,amount=…,desc=…")
 
-    order = date_order([r.get(cols["date"]) or "" for r in rows], args.dates)
+    order = date_order([r.get(cols["date"]) or "" for r in rows], forced_dates)
     if not order:
         sys.exit("❌ Dates like 03/04/2026 could be either order. Ask the user, then re-run with "
                  "--dates dmy (day first) or --dates mdy (month first).")
 
-    existing = ledger_rows()
-    zh = any(kind(r.get("type", "")) != r.get("type", "") for r in existing) or (not existing and LANG == "zh-TW")
-    type_word = {"expense": "支出", "income": "收入", "transfer": "轉帳"} if zh else \
-                {"expense": "expense", "income": "income", "transfer": "transfer"}
-    seen = {m.group(1) for r in existing for m in [re.search(r"bank:(\w+)", r.get("note") or "")] if m}
-    manual = {}
-    for r in existing:
-        if "bank:" in (r.get("note") or ""):
-            continue
-        a = amount(r.get("amount"))
-        if a is not None:
-            manual.setdefault((r.get("date"), round(a, 2)), []).append(r.get("id"))
-
-    next_id = max([int(r["id"]) for r in existing if (r.get("id") or "").isdigit()] or [0]) + 1
-    new, dupes, bad, repeats = [], [], [], {}
+    txs, bad, repeats = [], [], {}
     for r in rows:
         raw_date = (r.get(cols["date"]) or "").strip()
         if not raw_date:
@@ -265,7 +246,7 @@ def main():
             continue
         if signed == 0:
             continue
-        if args.flip:
+        if flip:
             signed = -signed
         desc = " ".join((r.get(cols.get("desc", "")) or "").split()) if cols.get("desc") else ""
         k, cat = guess(desc, signed)
@@ -274,31 +255,118 @@ def main():
         base = f"{d.isoformat()}|{amt:.2f}|{desc.lower()}"
         repeats[base] = repeats.get(base, 0) + 1
         fp = hashlib.sha1(f"{base}|{repeats[base]}".encode()).hexdigest()[:10]
-        if fp in seen:
+        txs.append({"date": d, "signed": signed, "amt": amt, "desc": desc, "kind": k, "cat": cat, "fp": fp})
+    return txs, cols, order, bad
+
+
+def row_date(r):
+    try:
+        return date.fromisoformat((r.get("date") or "").strip()[:10])
+    except ValueError:
+        return None
+
+
+def same_side(tx, row) -> bool:
+    """Money out can't be explained by a ledger income row, and money in only by income or a transfer."""
+    k = kind(row.get("type", ""))
+    return k in ("income", "transfer") if tx["signed"] > 0 else k != "income"
+
+
+def pair_up(txs, rows, window: int) -> dict:
+    """Match statement lines to ledger rows one-to-one, closest dates first.
+
+    → {index in txs: (ledger row, days apart)}. Without the one-to-one rule a single
+    "coffee 4" in the ledger would swallow every 4.00 coffee on the statement that week.
+    """
+    by_amount = {}
+    for j, r in enumerate(rows):
+        a, d = amount(r.get("amount")), row_date(r)
+        if a is not None and d is not None:
+            by_amount.setdefault(round(a, 2), []).append((j, d, r))
+    candidates = []
+    for i, tx in enumerate(txs):
+        for j, d, r in by_amount.get(tx["amt"], ()):
+            gap = abs((tx["date"] - d).days)
+            if gap <= window and same_side(tx, r):
+                candidates.append((gap, i, j, r))
+    candidates.sort(key=lambda c: c[:3])
+    pairs, used = {}, set()
+    for gap, i, j, r in candidates:
+        if i not in pairs and j not in used:
+            pairs[i] = (r, gap)
+            used.add(j)
+    return pairs
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Import a bank / card statement CSV.")
+    ap.add_argument("file")
+    ap.add_argument("--payment", default=S.get("default_payment", "card"),
+                    help="payment method for every row: card, bank, … (default: from settings)")
+    ap.add_argument("--flip", action="store_true", help="positive amounts are spending")
+    ap.add_argument("--dates", choices=["dmy", "mdy", "ymd"], help="date order, if ambiguous")
+    ap.add_argument("--map", default="", help="date=Col,amount=Col,desc=Col (or debit=,credit=)")
+    ap.add_argument("--window", type=int, default=3, help="days apart that still count as the same purchase")
+    ap.add_argument("--keep", default="", help="comma-separated codes of possible duplicates to import anyway")
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args()
+    if args.window < 0:
+        sys.exit("❌ --window can't be negative.")
+
+    path = Path(args.file).expanduser()
+    if not path.exists():
+        sys.exit(f"❌ File not found: {path}")
+    txs, cols, order, bad = load_statement(path, args.map, args.dates or "", args.flip)
+    print(f"🔎 Columns: {cols}")
+
+    existing = ledger_rows()
+    zh = any(kind(r.get("type", "")) != r.get("type", "") for r in existing) or (not existing and LANG == "zh-TW")
+    type_word = {"expense": "支出", "income": "收入", "transfer": "轉帳"} if zh else \
+                {"expense": "expense", "income": "income", "transfer": "transfer"}
+    seen = {m.group(1) for r in existing for m in [re.search(r"bank:(\w+)", r.get("note") or "")] if m}
+    hand_logged = [r for r in existing if "bank:" not in (r.get("note") or "")]
+    keep = {c.strip() for c in args.keep.split(",") if c.strip()}
+
+    fresh = [t for t in txs if t["fp"] not in seen]
+    unknown = keep - {t["fp"] for t in fresh}
+    if unknown:
+        print(f"⚠️  --keep codes not found in this statement: {', '.join(sorted(unknown))}")
+    checked = [t for t in fresh if t["kind"] != "transfer" and t["fp"] not in keep]
+    pairs = pair_up(checked, hand_logged, args.window)
+    duplicate_fps = {checked[i]["fp"]: pair for i, pair in pairs.items()}
+
+    next_id = max([int(r["id"]) for r in existing if (r.get("id") or "").isdigit()] or [0]) + 1
+    new, dupes = [], []
+    for t in fresh:
+        if t["fp"] in duplicate_fps:
+            row, gap = duplicate_fps[t["fp"]]
+            dupes.append((t, row, gap))
             continue
-        if (d.isoformat(), amt) in manual and k != "transfer":
-            dupes.append((d.isoformat(), amt, desc, manual[(d.isoformat(), amt)]))
-            continue
+        cat = t["cat"]
         category = CATS_ZH.get(cat, cat) if zh else ("Other" if cat == "Income" else cat)
         if cat == "Dining":
             category = S.get("eat_out_category", category)
         elif cat == "Groceries":
             category = S.get("groceries_category", category)
+        amt = t["amt"]
         new.append({
-            "id": next_id, "date": d.isoformat(), "type": type_word[k],
+            "id": next_id, "date": t["date"].isoformat(), "type": type_word[t["kind"]],
             "amount": str(int(amt)) if amt == int(amt) else f"{amt:.2f}",
-            "category": category, "item": desc[:60] or "bank transaction",
+            "category": category, "item": t["desc"][:60] or "bank transaction",
             "payment": args.payment,
-            "note": f"bank:{fp} " + ("[銀行匯入,分類待確認]" if zh else "[bank import: check category]"), "receipt": "",
+            "note": f"bank:{t['fp']} " + ("[銀行匯入,分類待確認]" if zh else "[bank import: check category]"), "receipt": "",
         })
         next_id += 1
 
     if bad:
         print(f"⚠️  {len(bad)} rows skipped: unreadable date or amount (first: {bad[0]})")
     if dupes:
-        print(f"⚠️  {len(dupes)} possible duplicates skipped (same date and amount already in the ledger):")
-        for dd, a, desc, ids in dupes:
-            print(f"   {dd} {a:>9}  {desc[:40]}  ← #{', #'.join(ids)}")
+        print(f"⚠️  {len(dupes)} possible duplicates skipped (same amount within {args.window} days of a hand-logged entry):")
+        for t, row, gap in dupes:
+            apart = "same day" if gap == 0 else f"{gap}d apart"
+            print(f"   {t['date'].isoformat()} {t['amt']:>9}  {t['desc'][:40]}  ← #{row.get('id')} "
+                  f"{row.get('date')} {row.get('item')} ({apart}) [{t['fp']}]")
+        print("   Different purchase? Re-run with --keep <code in brackets>.")
     if not new:
         print("✅ Nothing new to import.")
         return
@@ -315,6 +383,7 @@ def main():
         return
 
     write_header = not LEDGER.exists() or LEDGER.stat().st_size == 0
+    end_with_newline(LEDGER)
     with LEDGER.open("a", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS)
         if write_header:

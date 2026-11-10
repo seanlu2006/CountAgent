@@ -11,5 +11,6 @@
 ## 改 skill 時
 
 - 改 scripts 前後,用維護者自己的帳本跑 `report.py` / `quarterly.py` / `dashboard.py` 比對數字,確認沒變。
+- 改完跑 `python3 -m unittest discover tests`(只用暫存資料夾,不碰真實帳本)。
 - 新使用者流程用乾淨的 `HOME`(或 `COUNTAGENT_DATA=<暫存資料夾>`)測,不要碰真實資料。
 - 文字放 `scripts/i18n.py`(zh-TW / en),範本放 `templates/<語言>/`。

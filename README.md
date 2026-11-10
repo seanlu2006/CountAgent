@@ -56,7 +56,8 @@ The practical difference: recording an expense goes from "open app → pick cate
 - **One-sentence capture** — an iOS Shortcut plus Siri appends one line to `inbox.txt` in iCloud. It works offline, and if you set the Shortcut up to prepend a timestamp, the agent uses that as the date.
 - **Semantic entry** — the agent reads the backlog line by line, infers the date, the type, the category and the payment method, writes a short description, and appends a nine-column row to the ledger.
 - **Duplicate protection** — iCloud sync can hand back lines that were already processed, so every raw line is kept in an archive file and compared verbatim; anything already seen is skipped. A second check catches the human version: the same amount for the same thing on the same day (two "lunch 90"s) is recorded once, and the agent asks whether it really was two meals.
-- **Bank statement import** — a CSV from any bank or card: columns, date order and decimal format detected; card repayments become transfers; re-imports and things you already logged are skipped.
+- **Bank statement import** — a CSV from any bank or card: columns, date order and decimal format detected; card repayments become transfers; re-imports and things you already logged are skipped, even when the bank posts them days later.
+- **Statement reconciliation** — compares a statement with the ledger and shows the gap, what you forgot to log, what the bank never charged, and entries logged under the wrong payment method. It changes nothing.
 - **E-invoice import** — in Taiwan, purchases can be attached to a phone-barcode carrier and retrieved later. Two routes, one ledger: a CSV export from the carrier app (column names matched by keyword, comma or tab, Big5 and UTF-8 both decoded automatically) or the Ministry of Finance carrier API. Both deduplicate on invoice number.
 - **Billing-cycle months** — a "month" runs from the day after the credit card statement closes to the next closing day (set `cycle_day` to your closing day, or 0 for calendar months), so a budget month matches the bill you actually pay. Quarters are three billing cycles.
 - **Reports** — a monthly summary, a quarterly statement (savings rate, budget vs actual, fixed vs variable spending) and an interactive HTML dashboard: daily spending against the daily budget, category bars against their budgets, an eating-out-only toggle, a transactions table and a ⌘K command palette. One self-contained file, no libraries, works offline.
@@ -99,7 +100,7 @@ python3 $S/dashboard.py --demo       # made-up data, never reads your ledger
 
 **Phone capture** is optional, but it's the point of the whole design: a phone action that appends one line to a synced text file. Step-by-step for iPhone (Shortcuts + Siri) and Android is in [`references/inbox.md`](skills/countagent/references/inbox.md).
 
-**Bank and card statements**: hand the agent a CSV export from your bank. It reads the columns, date order and number format by itself, turns card repayments into transfers so nothing counts twice, and skips anything you already logged by hand. Details: [`references/bank-import.md`](skills/countagent/references/bank-import.md).
+**Bank and card statements**: hand the agent a CSV export from your bank. It reads the columns, date order and number format by itself, turns card repayments into transfers so nothing counts twice, and skips anything you already logged by hand, even if the bank posted it a few days later. To see what doesn't match, ask it to reconcile the statement against your ledger; that changes nothing. Details: [`references/bank-import.md`](skills/countagent/references/bank-import.md).
 
 **Taiwan e-invoice import** (CSV export or the Ministry of Finance carrier API): [`references/einvoice-tw.md`](skills/countagent/references/einvoice-tw.md).
 
@@ -147,10 +148,12 @@ CountAgent/
 │   │   ├── budget.py              # budget.md parser (English or Chinese headings)
 │   │   ├── i18n.py                # en / zh-TW text
 │   │   ├── import_bank.py         # bank / card statement CSV import (any bank)
+│   │   ├── reconcile.py           # compare a statement with the ledger, read-only
 │   │   ├── import_csv.py          # Taiwan e-invoice CSV import
 │   │   ├── fetch_invoices.py      # Taiwan Ministry of Finance carrier API
 │   │   └── categorize.py          # shop name → category for the imports
 │   └── templates/{en,zh-TW}/      # starting files, all made-up numbers
+├── tests/                         # python3 -m unittest discover tests
 ├── docs/dashboard.png             # the screenshot above
 └── data/, reports/                # the maintainer's own ledger — gitignored, never published
 ```
