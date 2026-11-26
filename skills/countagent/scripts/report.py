@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from period import CUTOFF, baseline_income, first_date, floor_for, period_of, period_range  # noqa: E402
 
 from cfg import BUDGET, LEDGER  # noqa: E402
-from i18n import CW, amount, fmt, kind, other, t, warn_bad  # noqa: E402
+from i18n import CW, amount, fmt, is_extra, kind, other, t, warn_bad  # noqa: E402
 
 
 def main():
@@ -26,6 +26,7 @@ def main():
         return
 
     income = 0
+    extra = 0  # note 標「額外」的一次性收入,加在保底之上
     expense = 0
     by_cat = defaultdict(float)
     invest = 0
@@ -43,7 +44,10 @@ def main():
             continue
         k = kind(r.get("type", ""))
         if k == "income":
-            income += amt
+            if is_extra(r.get("note")):
+                extra += amt
+            else:
+                income += amt
         elif k == "expense":
             expense += amt
             by_cat[r.get("category") or other()] += amt
@@ -58,10 +62,13 @@ def main():
     warn_bad(bad)
     floor = floor_for(month, baseline_income(BUDGET), first_date(all_rows))
     if income < floor:
-        print(t("m_income_floor", floor=fmt(floor), actual=fmt(income)))
+        print(t("m_income_floor", floor=fmt(floor + extra), actual=fmt(income + extra)))
         income = floor
     else:
-        print(t("m_income", v=fmt(income)))
+        print(t("m_income", v=fmt(income + extra)))
+    if extra:
+        print(t("m_income_extra", v=fmt(extra)))
+    income += extra
     print(t("m_expense", v=fmt(expense)))
     print(t("m_net", v=fmt(income - expense)))
     if invest:

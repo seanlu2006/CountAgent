@@ -18,7 +18,7 @@ from period import CUTOFF, baseline_income, budget_extras, first_date, floor_for
 
 import budget  # noqa: E402
 from cfg import BUDGET, LEDGER, REPORTS  # noqa: E402
-from i18n import CW, amount, fmt, is_fixed, kind, other, t, warn_bad  # noqa: E402
+from i18n import CW, amount, fmt, is_extra, is_fixed, kind, other, t, warn_bad  # noqa: E402
 QUARTERS = {1: (1, 2, 3), 2: (4, 5, 6), 3: (7, 8, 9), 4: (10, 11, 12)}
 
 
@@ -39,7 +39,7 @@ def collect(year, q):
     months = [f"{year}-{m:02d}" for m in QUARTERS[q]]
     d = {
         "months": months,
-        "m_income": defaultdict(float), "m_expense": defaultdict(float),
+        "m_income": defaultdict(float), "m_extra": defaultdict(float), "m_expense": defaultdict(float),
         "m_invest": defaultdict(float), "cats": defaultdict(float),
         "fixed": 0.0, "variable": 0.0,
     }
@@ -59,7 +59,7 @@ def collect(year, q):
             continue
         k = kind(r.get("type"))
         if k == "income":
-            d["m_income"][ym] += amt
+            d["m_extra" if is_extra(r.get("note")) else "m_income"][ym] += amt
         elif k == "expense":
             d["m_expense"][ym] += amt
             d["cats"][r.get("category") or other()] += amt
@@ -83,6 +83,8 @@ def build_lines(year, q, d, bud):
         if m <= today_p and f and d["m_income"].get(m, 0) < f:
             d["m_income"][m] = f
             d.setdefault("floored", []).append(m)
+    for m, v in d["m_extra"].items():  # 額外收入加在保底之上
+        d["m_income"][m] += v
     income = sum(d["m_income"].values())
     expense = sum(d["m_expense"].values())
     invest = sum(d["m_invest"].values())

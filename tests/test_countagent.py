@@ -79,6 +79,19 @@ class Dates(unittest.TestCase):
         self.assertEqual(period.period_of("2026-12-24"), "2027-01")
         self.assertEqual(period.period_range("2026-10"), (date(2026, 9, 24), date(2026, 10, 23)))
 
+    def test_closing_day_override(self):
+        old = dict(period.OVERRIDES)
+        try:
+            period.OVERRIDES.update({"2026-11": date(2026, 11, 21), "2027-01": date(2027, 1, 26)})
+            self.assertEqual(period.period_of("2026-11-21"), "2026-11")
+            self.assertEqual(period.period_of("2026-11-22"), "2026-12")  # closed early
+            self.assertEqual(period.period_range("2026-12"), (date(2026, 11, 22), date(2026, 12, 23)))
+            self.assertEqual(period.period_of("2027-01-25"), "2027-01")  # closed late
+            self.assertEqual(period.period_range("2027-02"), (date(2027, 1, 27), date(2027, 2, 23)))
+        finally:
+            period.OVERRIDES.clear()
+            period.OVERRIDES.update(old)
+
 
 class Guess(unittest.TestCase):
     def test_keywords_start_a_word(self):
@@ -181,6 +194,21 @@ class ReconcileMaths(unittest.TestCase):
         txs = [tx("2026-10-20", 10.0), tx("2026-11-03", 20.0)]
         res = rec.reconcile(txs, [], "card", 3, start=date(2026, 11, 1), end=date(2026, 11, 30))
         self.assertEqual(res["statement_total"], 20.0)
+
+
+class BaselineIncome(unittest.TestCase):
+    def test_extra_income_adds_on_top_of_the_baseline(self):
+        # regular income not entered yet: baseline 1000 + one-off extra 300
+        self.assertEqual(period.income_with_floor({}, ["2026-11"], 1000, "", {"2026-11": 300}), 1300)
+
+    def test_real_income_above_baseline_plus_extra(self):
+        self.assertEqual(period.income_with_floor({"2026-11": 1500}, ["2026-11"], 1000, "", {"2026-11": 300}), 1800)
+
+    def test_extra_marker(self):
+        import i18n
+        self.assertTrue(i18n.is_extra("額外;bonus"))
+        self.assertTrue(i18n.is_extra("Extra payout"))
+        self.assertFalse(i18n.is_extra("salary"))
 
 
 class CommandLine(unittest.TestCase):

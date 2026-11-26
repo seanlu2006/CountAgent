@@ -23,7 +23,7 @@ from period import baseline_income, budget_extras, first_date, income_with_floor
 
 import budget  # noqa: E402
 from cfg import BUDGET, LEDGER, REPORTS, S, template  # noqa: E402
-from i18n import DASH, DEC, LANG, SYM, amount, is_fixed, kind, month_label, other, t, warn_bad  # noqa: E402
+from i18n import DASH, DEC, LANG, SYM, amount, is_extra, is_fixed, kind, month_label, other, t, warn_bad  # noqa: E402
 
 EAT = S.get("eat_out_category", "Dining")
 GROC = S.get("groceries_category", "Groceries")
@@ -121,7 +121,8 @@ def load_budget(demo: bool = False):
 def _row(r):
     return {"date": r.get("date", ""), "type": kind(r.get("type", "")), "amount": round(amount(r.get("amount")), 2),
             "category": r.get("category", ""), "item": r.get("item", ""),
-            "payment": r.get("payment", ""), "fixed": is_fixed(r.get("note"))}
+            "payment": r.get("payment", ""), "fixed": is_fixed(r.get("note")),
+            "extra": is_extra(r.get("note"))}
 
 
 def _point(label, day_rows):
@@ -155,12 +156,12 @@ def build_view(key, label, kind, days, rows, budget, save, floor=0.0, extras=Non
 
     periods = sorted({period_of(d) for d in days})
     n_months = len(periods)
-    inc_by = defaultdict(float)
+    inc_by, extra_by = defaultdict(float), defaultdict(float)
     for r in vr:
         if r["type"] == "income":
-            inc_by[period_of(r["date"])] += r["amount"]
-    actual_income = sum(inc_by.values())
-    income = income_with_floor(inc_by, periods, floor, first)
+            (extra_by if r.get("extra") else inc_by)[period_of(r["date"])] += r["amount"]
+    actual_income = sum(inc_by.values()) + sum(extra_by.values())
+    income = income_with_floor(inc_by, periods, floor, first, extra_by)
     biggest = max(exp, key=lambda r: r["amount"], default=None)
     return {
         "key": key, "label": label, "kind": kind,

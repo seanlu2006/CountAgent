@@ -52,6 +52,12 @@ def is_fixed(note: str) -> bool:
     return "固定" in n or "fixed" in n
 
 
+def is_extra(note: str) -> bool:
+    """收入 note 有「額外」/ extra:保底以外的一次性收入,加在保底之上,不被保底蓋掉。"""
+    n = (note or "").lower()
+    return "額外" in n or "extra" in n
+
+
 def other() -> str:
     return "其他" if LANG == "zh-TW" else "Other"
 
@@ -70,6 +76,7 @@ _MSG = {
         "m_title_cal": "📊 {ym} 月報  ({a} ~ {b})",
         "m_rows": "筆數    : {n}",
         "m_income_floor": "總收入  : {floor}   (實際入帳 {actual},以保底計;收入季末補)",
+        "m_income_extra": "  其中額外收入: {v}   (一次性,加在保底之上)",
         "m_income": "總收入  : {v}",
         "m_expense": "總支出  : {v}",
         "m_net": "結餘    : {v}",
@@ -128,6 +135,7 @@ _MSG = {
         "m_title_cal": "📊 {ym} summary  ({a} – {b})",
         "m_rows": "Entries   : {n}",
         "m_income_floor": "Income    : {floor}   (recorded {actual}; baseline used until income is entered)",
+        "m_income_extra": "  incl. extra: {v}   (one-off, added on top of the baseline)",
         "m_income": "Income    : {v}",
         "m_expense": "Spending  : {v}",
         "m_net": "Net       : {v}",

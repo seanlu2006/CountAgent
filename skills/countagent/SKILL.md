@@ -71,7 +71,7 @@ Corrections: edit that row by id and say what changed. Deletions only when the u
 
 ## 3. Periods
 
-A "month" is a **billing period**: if `cycle_day` is 23, "October" = Sep 24 – Oct 23, so the budget month matches the card statement. `cycle_day: 0` = calendar months. A quarter = three periods. When the user says "this month" they mean the current period.
+A "month" is a **billing period**: if `cycle_day` is 23, "October" = Sep 24 – Oct 23, so the budget month matches the card statement. `cycle_day: 0` = calendar months. If the card closes early or late one month (a holiday), add `"cycle_overrides": {"YYYY-MM": "YYYY-MM-DD"}` to `config.json` (that period's real last day); don't change entry dates. A quarter = three periods. When the user says "this month" they mean the current period.
 
 ## 4. Reports
 
@@ -82,7 +82,7 @@ python3 <skill>/scripts/dashboard.py [--no-open]      # interactive HTML dashboa
 python3 <skill>/scripts/dashboard.py --demo           # sample data → dashboard-demo.html; never touches the ledger
 ```
 
-Income is often entered late (some users enter it quarterly). Reports count each period's income as at least the **baseline income** in `budget.md` (pro-rated in the period the ledger starts, zero before it), and say so. Any row whose amount can't be read is skipped with a warning naming its id — fix those rows.
+Income is often entered late (some users enter it quarterly). Reports count each period's income as at least the **baseline income** in `budget.md` (pro-rated in the period the ledger starts, zero before it), and say so. One-off income on top of the usual (a bonus, a trading payout, an extra gift) gets `extra` in its note (`額外` in a Chinese ledger): reports add it **on top of** the baseline instead of letting the baseline hide it. Any row whose amount can't be read is skipped with a warning naming its id — fix those rows.
 
 When reporting: totals, the categories over budget, and one honest observation with a number ("eating out is 212/day against a 180 target; at this pace the period ends ~1,000 over"). No lectures. Re-run the dashboard after recording so it stays current.
 

@@ -12,10 +12,15 @@ import budget
 from cfg import S
 
 CUTOFF = int(S.get("cycle_day") or 0)
+# 遇假日提早/延後結帳:{"2026-11": "2026-11-21"} = 11 月帳期改在 11/21 結束。
+OVERRIDES = {k: date.fromisoformat(v) for k, v in (S.get("cycle_overrides") or {}).items()}
 
 
 def _end(y: int, m: int) -> date:
-    """帳期 y-m 的最後一天(結帳日大於當月天數時取月底)。"""
+    """帳期 y-m 的最後一天(有 cycle_overrides 用它;結帳日大於當月天數時取月底)。"""
+    o = OVERRIDES.get(f"{y:04d}-{m:02d}")
+    if o:
+        return o
     last = calendar.monthrange(y, m)[1]
     return date(y, m, min(CUTOFF, last) if CUTOFF else last)
 
@@ -25,7 +30,10 @@ def period_of(d) -> str:
     if isinstance(d, str):
         d = date.fromisoformat(d[:10])
     y, m = d.year, d.month
-    if d > _end(y, m):
+    py, pm = (y - 1, 12) if m == 1 else (y, m - 1)
+    if d <= _end(py, pm):  # 上期延後結帳,跨進這個月
+        y, m = py, pm
+    elif d > _end(y, m):
         y, m = (y + 1, 1) if m == 12 else (y, m + 1)
     return f"{y:04d}-{m:02d}"
 
@@ -70,9 +78,12 @@ def floor_for(p: str, floor: float, first: str = "") -> float:
     return floor * ((b - d0).days + 1) / ((b - a).days + 1)
 
 
-def income_with_floor(actual_by_period: dict, periods, floor: float, first: str = "") -> float:
-    """每期收入 = max(實際入帳, 保底)。"""
-    return sum(max(actual_by_period.get(p, 0.0), floor_for(p, floor, first)) for p in periods)
+def income_with_floor(actual_by_period: dict, periods, floor: float, first: str = "",
+                      extra_by_period: dict | None = None) -> float:
+    """每期收入 = max(一般入帳, 保底) + 額外收入(note 標「額外」/ extra 的一次性收入)。"""
+    extra = extra_by_period or {}
+    return sum(max(actual_by_period.get(p, 0.0), floor_for(p, floor, first)) + extra.get(p, 0.0)
+               for p in periods)
 
 
 def first_date(rows) -> str:
